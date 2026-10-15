@@ -187,12 +187,23 @@ def main():
     ap.add_argument("--extra_relevant", type=int, default=6)
     ap.add_argument("--show", type=int, default=8)
     ap.add_argument("--batches", type=int, default=3)
+    # stories already published in the last N editions are skipped, so a long-running thread is not repeated every day
+    ap.add_argument("--issues-dir", default=None, help="data/issues folder of the site")
+    ap.add_argument("--exclude-editions", type=int, default=3)
     a = ap.parse_args()
     tax = json.load(open(a.taxonomy))
     tax = tax["labels"] if isinstance(tax, dict) else tax
 
     ranks, firebase_ok = official_rankings()
     cands, fp_pos = candidates(a.hours)
+    seen = set()
+    if a.issues_dir:
+        import glob, os
+        for f in sorted(glob.glob(os.path.join(a.issues_dir, "*.json")))[-a.exclude_editions:]:
+            seen |= {str(s["id"]) for s in json.load(open(f)).get("stories", [])}
+    n_before = len(cands)
+    cands = [h for h in cands if h["objectID"] not in seen]
+    excluded_seen = n_before - len(cands)
     now = time.time()
     for h in cands:
         i = h["objectID"]
@@ -255,12 +266,12 @@ def main():
         json.dump(stories[b::n], open(f"{a.out}/digest_batch{b+1}.json", "w"), ensure_ascii=False, indent=1)
     meta = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "window_hours": a.hours,
             "official_api_reachable": firebase_ok, "ranking_source": "HN official API" if firebase_ok else "Algolia front_page",
-            "candidates": len(cands), "selected": len(stories), "errors": errors,
+            "candidates": len(cands), "excluded_already_published": excluded_seen, "selected": len(stories), "errors": errors,
             "comments_fetched_total": sum(s["comments_fetched"] for s in stories),
             "comments_listed_total": sum(s["num_comments_listed"] or 0 for s in stories),
             "top_candidates_not_selected": [{"title": h["title"], "points": h.get("points"), "comments": h.get("num_comments")} for h in by_hot[a.top:a.top + 15] if h["objectID"] not in ids]}
     json.dump(meta, open(f"{a.out}/run_meta.json", "w"), ensure_ascii=False, indent=1)
-    print(json.dumps({k: meta[k] for k in ("official_api_reachable", "candidates", "selected", "comments_fetched_total", "comments_listed_total", "errors")}))
+    print(json.dumps({k: meta[k] for k in ("official_api_reachable", "candidates", "excluded_already_published", "selected", "comments_fetched_total", "comments_listed_total", "errors")}))
 
 
 if __name__ == "__main__":

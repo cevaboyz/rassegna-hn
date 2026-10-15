@@ -613,6 +613,17 @@
     "Fingerprints are the new cookies",
     "Disney+: New user agreement allows ads before movies in all subscriptions"
    ]
+  },
+  {
+   "id": "society_trends",
+   "name": "Società e tendenze sociali",
+   "description": "Socialità, solitudine, demografia, stili di vita e indagini sulla società",
+   "patterns": [],
+   "domains": [],
+   "origin": "daily-2026-10-15",
+   "examples": [
+    "Americans' social activity has steeply declined in the past 30 years"
+   ]
   }
  ]
 }
