@@ -1,0 +1,69 @@
+# Sends the newsletter by email when a new edition lands in data/issues/.
+# Email goes through Resend's HTTP API (https://resend.com), so no Gmail password is involved.
+# Required repository secrets:  RESEND_API_KEY, MAIL_TO
+# Optional secret:              MAIL_FROM  (default "Rassegna HN <onboarding@resend.dev>", Resend's test sender:
+#                               it only delivers to the address of your own Resend account)
+name: Email newsletter
+
+on:
+  push:
+    branches: [main]
+    paths: ["data/issues/*.json"]
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Edition to (re)send, YYYY-MM-DD"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: email-newsletter
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find new editions
+        id: find
+        run: |
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            files="data/issues/${{ github.event.inputs.date }}.json"
+          else
+            # only files ADDED by this push: corrections to an existing edition do not re-send it
+            files=$(git diff --name-only --diff-filter=A "${{ github.event.before }}" "${{ github.sha }}" -- 'data/issues/*.json' 2>/dev/null || true)
+          fi
+          echo "files=$(echo $files | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          echo "Editions to send: $files"
+
+      - name: Render and send
+        if: steps.find.outputs.files != ''
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RESEND_API_KEY:-}" ] || [ -z "${MAIL_TO:-}" ]; then
+            echo "::error::Missing RESEND_API_KEY or MAIL_TO secret"; exit 1
+          fi
+          FROM="${MAIL_FROM:-Rassegna HN <onboarding@resend.dev>}"
+          for f in ${{ steps.find.outputs.files }}; do
+            out=$(mktemp -d)
+            python3 scripts/render_email.py "$f" --site-url "$SITE_URL" --out-dir "$out"
+            jq -n --arg from "$FROM" --arg to "$MAIL_TO" --rawfile subject "$out/subject.txt" \
+                  --rawfile html "$out/email.html" --rawfile text "$out/email.txt" \
+                  '{from:$from, to:[$to], subject:$subject, html:$html, text:$text}' > "$out/payload.json"
+            code=$(curl -sS -o "$out/resp.json" -w '%{http_code}' -X POST https://api.resend.com/emails \
+                     -H "Authorization: Bearer $RESEND_API_KEY" -H "Content-Type: application/json" \
+                     --data @"$out/payload.json")
+            echo "Resend HTTP $code for $f: $(cat "$out/resp.json")"
+            [ "$code" -ge 200 ] && [ "$code" -lt 300 ] || exit 1
+          done

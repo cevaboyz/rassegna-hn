@@ -1,0 +1,618 @@
+{
+ "meta": {
+  "built": "2026-10-14",
+  "window_days": 90,
+  "corpus_stories": 13345,
+  "min_points": 10,
+  "rule_coverage": 0.651,
+  "method": "TF-IDF + NMF (k=26) su titoli e domini per scoprire i temi; regole keyword/dominio curate per etichettare; campione di 120 titoli non coperti letto a mano, aggiunti 2 temi (salute, lavoro e vita)."
+ },
+ "labels": [
+  {
+   "id": "dev_tools",
+   "name": "Strumenti per sviluppatori e open source",
+   "description": "Librerie, CLI, editor, self-hosting, repository open source, Show HN tecnici",
+   "patterns": [
+    "\\b(cli|terminal|editor|vim|emacs|vscode|git|library|framework|sdk|api|self.?host|open.?source|tool|compiler|debugger|neovim|tui|plugin)\\b"
+   ],
+   "domains": [
+    "github.com",
+    "gitlab.com",
+    "codeberg.org",
+    "sr.ht"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 1076,
+    "share": 0.0806,
+    "median_points": 41.0,
+    "median_comments": 14.0
+   },
+   "examples": [
+    "Show HN: An e-ink frame that hears birds and draws them as 1800s illustrations",
+    "Nitter and XCancel receive cease and desist notices",
+    "Audacity 4.0",
+    "CEO fired developers to make room for AI. Developers create open source AI CEO",
+    "Run Qwen 3.8 Flash Next (125B) on consumer hardware (RTX 4090) at 100T/s"
+   ]
+  },
+  {
+   "id": "ai_society",
+   "name": "AI e società",
+   "description": "Effetti dell'AI su lavoro, cultura, istruzione, contenuti generati, slop, etica e sicurezza",
+   "patterns": [
+    "\\b(ai.?generated|ai slop|slop|chatbots?|misalign|ai safety|jobs?|unemploy|students?|teachers?|deepfake|artists?|copyright)\\b",
+    "\\b(ai|llm)\\b.*\\b(writ|read|think|brain|people|human)",
+    "\\bai\\b"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 1048,
+    "share": 0.0785,
+    "median_points": 29.0,
+    "median_comments": 15.0
+   },
+   "examples": [
+    "AI-generated posters don’t have to be horrible",
+    "A misalignment of AI in mathematics",
+    "AI;DR (AI; Didn't Read)",
+    "Israel creates fake think tank in likely attempt to dupe AI chatbots",
+    "Don't paste the AI, please"
+   ]
+  },
+  {
+   "id": "ai_models",
+   "name": "Modelli AI e rilasci",
+   "description": "Lanci e confronti di modelli frontier e open-weight, benchmark, capacità",
+   "patterns": [
+    "\\b(gpt|claude|gemini|llama|qwen|deepseek|kimi|glm|mistral|grok|opus|sonnet|haiku|fable|mythos|astra|argon|phi-?\\d|gemma)\\b",
+    "\\bopen.?weights?\\b",
+    "\\b(llm|llms|language models?|foundation models?|frontier model|reasoning model|benchmark|tokeni[sz])",
+    "\\bmodels?\\b.*\\b(ai|parameter|\\d+b)\\b"
+   ],
+   "domains": [
+    "huggingface.co",
+    "arxiv.org",
+    "deepmind",
+    "mistral.ai",
+    "qwenlm",
+    "deepseek"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 840,
+    "share": 0.0629,
+    "median_points": 55.5,
+    "median_comments": 23.0
+   },
+   "examples": [
+    "GPT-6 Astra",
+    "Kimi K3: Open Frontier Intelligence",
+    "Mistral Large 4",
+    "Claude Opus 5.5",
+    "Claude Opus 5"
+   ]
+  },
+  {
+   "id": "ai_industry",
+   "name": "Industria AI e business",
+   "description": "Aziende AI, finanziamenti, acquisizioni, IPO, data center, compute, chip per AI",
+   "patterns": [
+    "\\b(openai|anthropic|nvidia|hugging face|xai|perplexity|data ?cent(er|re)s?|gpu clusters?|compute|ipo|valuation|acquir|raises \\$|funding)\\b"
+   ],
+   "domains": [
+    "openai.com",
+    "anthropic.com"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 548,
+    "share": 0.0411,
+    "median_points": 35.0,
+    "median_comments": 14.0
+   },
+   "examples": [
+    "Nvidia agrees to acquire Hugging Face for $13B",
+    "GPT-6 Sol and Luna",
+    "OpenAI and Hugging Face address security incident during model evaluation",
+    "Sharing AI progress in mathematics",
+    "On the Navier–Stokes Millennium Prize Problem"
+   ]
+  },
+  {
+   "id": "startups_business",
+   "name": "Startup, business ed economia",
+   "description": "Startup, YC, fondi, licenziamenti, mercato del lavoro, economia, aziende",
+   "patterns": [
+    "\\b(startup|founder|yc|y combinator|vc|venture|layoffs?|laid off|revenue|profit|economy|inflation|stock|market|bankrupt|acquisition|acquires|ceo|company)\\b"
+   ],
+   "domains": [
+    "bloomberg.com",
+    "ft.com",
+    "wsj.com",
+    "cnbc.com",
+    "economist.com"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 535,
+    "share": 0.0401,
+    "median_points": 26,
+    "median_comments": 11
+   },
+   "examples": [
+    "Pentagon says overreliance on AI contributed to missile strike on Iran school",
+    "U.S. State Department pauses immigrant visa applications",
+    "Anthropic's best AI model struggles to attract users as cheaper tools thrive",
+    "OverpAId – Fire your CEO. Hire the future",
+    "Mark Zuckerberg attacks 'closed' AI rivals as Meta returns to open models"
+   ]
+  },
+  {
+   "id": "big_tech",
+   "name": "Big Tech e piattaforme",
+   "description": "Google, Apple, Meta, Microsoft, Amazon: prodotti, strategie, antitrust, piattaforme social",
+   "patterns": [
+    "\\b(google|apple|meta|facebook|instagram|whatsapp|microsoft|amazon|aws|youtube|tiktok|twitter|x\\.com|reddit|linkedin|android|iphone|app store)\\b"
+   ],
+   "domains": [
+    "blog.google",
+    "apple.com",
+    "microsoft.com"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 511,
+    "share": 0.0383,
+    "median_points": 42,
+    "median_comments": 16
+   },
+   "examples": [
+    "When did Google get so weird?",
+    "Aaron Swartz was prosecuted for scraping, while Meta does it without consequence",
+    "iPhone Duo",
+    "The Amazon tax",
+    "AWS: Inaccurate Estimated Billing Data – $1.7 billion"
+   ]
+  },
+  {
+   "id": "policy_law",
+   "name": "Politica, leggi e regolamentazione",
+   "description": "Leggi, tribunali, governi, regolazione tech, antitrust, age verification, geopolitica",
+   "patterns": [
+    "\\b(law|laws|court|judge|lawsuit|sued|ftc|doj|eu|european|gdpr|dma|regulat|ban|bans|banned|congress|senate|government|trump|tariff|sanction|age.?verif|supreme court|ruling|legal|police|border|china|chinese|iran|war)\\b"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 507,
+    "share": 0.038,
+    "median_points": 20,
+    "median_comments": 5
+   },
+   "examples": [
+    "Felony charges for citizen deleting phone data at US Border",
+    "Startup founders urge U.S. government not to shut off Chinese open weight AI",
+    "France to ban unsolicited telemarketing calls",
+    "Who's afraid of Chinese models?",
+    "Court agrees with EFF: Utah's VPN law demands a technical impossibility"
+   ]
+  },
+  {
+   "id": "ai_agents_coding",
+   "name": "Agenti AI e coding assistito",
+   "description": "Agenti, coding agent, harness, MCP, skill, IDE AI, vibe coding",
+   "patterns": [
+    "\\bagents?\\b",
+    "\\bagentic\\b",
+    "\\b(claude code|codex|cursor|copilot|windsurf|antigravity|aider|mcp|vibe.?cod|harness|skills?\\.md|agents\\.md|prompt)",
+    "\\bcoding (assistant|agent)"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 476,
+    "share": 0.0357,
+    "median_points": 31.5,
+    "median_comments": 14.0
+   },
+   "examples": [
+    "Discovery of a new OpenAI agent message board",
+    "Muse Glimmer: 30B-parameter model optimized for always-on local agent workflows",
+    "OpenAI agents carried out an undisclosed attack on RubyGems",
+    "Claude Code now reads AGENTS.md if there is no Claude.md",
+    "Docker Sandboxes – Disposable, isolated sandboxes for AI agents"
+   ]
+  },
+  {
+   "id": "science",
+   "name": "Scienza e ricerca",
+   "description": "Fisica, biologia, matematica, medicina, spazio, clima",
+   "patterns": [
+    "\\b(physics|biolog|math|mathemat|theorem|conjecture|quantum|nasa|space|spacex|rocket|moon|mars|planet|galaxy|star|telescope|climate|species|cells?|dna|genom|brain|cancer|disease|vaccine|study finds|researchers|scientists|nobel|evolution|fossil)\\b"
+   ],
+   "domains": [
+    "nature.com",
+    "science.org",
+    "quantamagazine",
+    "phys.org",
+    "nasa.gov",
+    "newscientist"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 416,
+    "share": 0.0312,
+    "median_points": 42.0,
+    "median_comments": 16.5
+   },
+   "examples": [
+    "Writing by hand is good for your brain",
+    "Terence Tao's ChatGPT conversation about the Jacobian Conjecture counterexample",
+    "More questions about whether researchers can trust OpenAI with unpublished math",
+    "India's first privately-developed rocket reaches orbit on debut launch",
+    "Two parallel neural ectoderm progenitors contribute to the developing brain"
+   ]
+  },
+  {
+   "id": "culture_history",
+   "name": "Cultura, storia e curiosità",
+   "description": "Storia, libri, persone, necrologi, lingua, curiosità, Wikipedia",
+   "patterns": [
+    "\\b(history|historic|ancient|century|\\d{4}s|book|books|novel|died|dies|obituary|in memory|museum|language|wikipedia|philosoph|writer|poem)\\b"
+   ],
+   "domains": [
+    "en.wikipedia.org",
+    "newyorker.com",
+    "theatlantic.com"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 342,
+    "share": 0.0256,
+    "median_points": 32.5,
+    "median_comments": 11.0
+   },
+   "examples": [
+    "Margaret Hamilton has died",
+    "In Memory of My Wife, Elise Cawley, with Thanks for 36 Wonderful Years",
+    "Dolly Parton has died",
+    "Tell HN: Bob Cringely has died",
+    "John C. Dvorak has died"
+   ]
+  },
+  {
+   "id": "hardware",
+   "name": "Hardware e chip",
+   "description": "CPU, GPU, Apple Silicon, RISC-V, elettronica, maker, ESP32, dispositivi",
+   "patterns": [
+    "\\b(cpu|gpu|chip|chips|silicon|risc-?v|arm|amd|intel|qualcomm|snapdragon|m\\d ultra|m\\d pro|esp32|raspberry|arduino|fpga|semiconductor|tsmc|pcb|keyboard|e-?ink|battery|hardware)\\b"
+   ],
+   "domains": [
+    "tomshardware.com",
+    "anandtech",
+    "hackaday.com",
+    "spectrum.ieee.org"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 310,
+    "share": 0.0232,
+    "median_points": 44.0,
+    "median_comments": 14.0
+   },
+   "examples": [
+    "GUIs should be fully keyboard-driven",
+    "Xiaomi: New CPU matches Apple cores single threaded, much faster multithreaded",
+    "AMD acquires Taalas to boost inference performance by etching models in silicon",
+    "Hackers activate automatic defrosting in supermarket fridges across Europe",
+    "California lawmakers unanimously pass Linux exemption from age-verification law"
+   ]
+  },
+  {
+   "id": "security_privacy",
+   "name": "Sicurezza e privacy",
+   "description": "Vulnerabilità, breach, malware, sorveglianza, crittografia, tracciamento",
+   "patterns": [
+    "\\b(vulnerab|exploit|cve|breach|hack|hacked|malware|ransomware|phishing|backdoor|surveil|flock|tracking|privacy|encrypt|password|spyware|zero.?day|leak|security)\\b"
+   ],
+   "domains": [
+    "krebsonsecurity",
+    "bleepingcomputer",
+    "404media.co"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 310,
+    "share": 0.0232,
+    "median_points": 37.5,
+    "median_comments": 9.0
+   },
+   "examples": [
+    "Tracking down the 16-year-old WAL-reset SQLite bug",
+    "Read this before you buy that TV streaming stick",
+    "'We hacked the FBI:' Hackers say they have data on all FBI employees",
+    "Ledger confirms spy chip implant behind wallet crypto thefts",
+    "Grand jury declines to indict Ohio man charged with destroying Flock camera"
+   ]
+  },
+  {
+   "id": "os_systems",
+   "name": "Sistemi operativi e Linux",
+   "description": "Linux, kernel, Windows, macOS, Android/iOS a livello di sistema, filesystem",
+   "patterns": [
+    "\\b(linux|kernel|windows|macos|ubuntu|debian|fedora|arch linux|bsd|unix|filesystem|systemd|android \\d+|ios \\d+|asahi|wayland)\\b"
+   ],
+   "domains": [
+    "lwn.net",
+    "phoronix.com",
+    "kernel.org"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 245,
+    "share": 0.0184,
+    "median_points": 42,
+    "median_comments": 15
+   },
+   "examples": [
+    "Creepy Crawlies",
+    "LG monitors silently install software through Windows Update without consent",
+    "Android 17 is the first since 3.x to add new APIs without releasing to the AOSP",
+    "Get your Windows license refund",
+    "A note on subscription prices from LWN"
+   ]
+  },
+  {
+   "id": "games_creative",
+   "name": "Giochi, grafica e creatività",
+   "description": "Videogiochi, grafica, design, font, musica, arte, fotografia",
+   "patterns": [
+    "\\b(game|games|gaming|video game|nintendo|steam|graphics|shader|3d|render|font|typeface|design|music|audio|synth|art|photo|camera|film|animation)\\b"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 238,
+    "share": 0.0178,
+    "median_points": 57.0,
+    "median_comments": 18.5
+   },
+   "examples": [
+    "LG smart TVs caught logging audio with screen off and snooping on local devices",
+    "Steam Frame starts at $1059",
+    "Decoy Font",
+    "Xbox goes down. You can't play games you own on disc",
+    "ZuckOff Know when a camera is in the room"
+   ]
+  },
+  {
+   "id": "web_browsers",
+   "name": "Web, browser e internet",
+   "description": "Browser, standard web, frontend, indie web, siti personali, forum, cultura di internet",
+   "patterns": [
+    "\\b(browser|firefox|chrome|chromium|safari|webkit|css|html|dom|frontend|web standards?|ublock|extension|website)\\b",
+    "\\b(personal websites?|small web|indie web|forums?|blog|blogs|rss|internet)\\b"
+   ],
+   "domains": [
+    "mozilla.org",
+    "web.dev",
+    "css-tricks"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 234,
+    "share": 0.0175,
+    "median_points": 49.0,
+    "median_comments": 23.0
+   },
+   "examples": [
+    "Firefox is now the last major browser that still supports uBlock Origin",
+    "Show HN: Bento - An entire PowerPoint in one HTML file (edit+view+data+collab)",
+    "HTML Can Do That",
+    "Hang on to Your Firefox",
+    "Every Fucking Website (2020)"
+   ]
+  },
+  {
+   "id": "programming_langs",
+   "name": "Linguaggi di programmazione",
+   "description": "Rust, Python, Go, Zig, JS/TS, compilatori, type system, paradigmi",
+   "patterns": [
+    "\\b(rust|python|golang|go \\d|zig|haskell|lisp|clojure|ocaml|elixir|erlang|ruby|java|kotlin|swift|c\\+\\+|typescript|javascript|wasm|webassembly|programming languages?|type system|borrow checker)\\b"
+   ],
+   "domains": [
+    "rust-lang.org",
+    "python.org",
+    "go.dev",
+    "ziglang.org"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 226,
+    "share": 0.0169,
+    "median_points": 65.5,
+    "median_comments": 21.0
+   },
+   "examples": [
+    "Shopify is moving from React Native back to Swift and Kotlin",
+    "Go 1.27",
+    "Rust is tier-1 language at Microsoft",
+    "Jev in 25 Lines of Python",
+    "Malicious Rust crate Arrayref runs a build-time payload"
+   ]
+  },
+  {
+   "id": "energy_env",
+   "name": "Energia e ambiente",
+   "description": "Energia, rinnovabili, nucleare, batterie, trasporti, città",
+   "patterns": [
+    "\\b(solar|wind|nuclear|energy|grid|power plant|electricity|ev|evs|electric vehicle|tesla|oil|gas|emissions|carbon|renewable|transit|trains?|cars?)\\b"
+   ],
+   "domains": [
+    "electrek.co",
+    "canarymedia"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 209,
+    "share": 0.0157,
+    "median_points": 32,
+    "median_comments": 16
+   },
+   "examples": [
+    "US strikes $1.2B deal to pay German firm to halt offshore wind projects",
+    "Italian parliament votes for return to nuclear energy",
+    "Data collected by cars and sold to third parties",
+    "I'm being cyberattacked by Tesla, Inc",
+    "Toyota is taking the Corolla electric"
+   ]
+  },
+  {
+   "id": "software_eng",
+   "name": "Ingegneria del software e carriera",
+   "description": "Architettura, pratiche, code review, testing, carriera e lavoro degli sviluppatori",
+   "patterns": [
+    "\\b(software engineer|engineering|programmers?|developers?|code review|testing|refactor|architecture|technical debt|career|hiring|interview|remote work|manager)\\b"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 158,
+    "share": 0.0118,
+    "median_points": 39.0,
+    "median_comments": 14.5
+   },
+   "examples": [
+    "“Code was never the hard part” is an insult to all programmers",
+    "I Inspected My Take-Home Interview Project. It Was a Whole Operation",
+    "Solving the Jane Street reverse engineering challenge",
+    "Music Theory for Programmers",
+    "Most people prefer traditional architecture"
+   ]
+  },
+  {
+   "id": "cloud_devops",
+   "name": "Cloud, infrastruttura e DevOps",
+   "description": "Cloud provider, Kubernetes, container, CDN, outage, hosting",
+   "patterns": [
+    "\\b(aws|azure|gcp|cloudflare|kubernetes|k8s|docker|container|serverless|outage|devops|terraform|hosting|cdn|dns|sre|observability|nix)\\b"
+   ],
+   "domains": [
+    "blog.cloudflare.com",
+    "status."
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 126,
+    "share": 0.0094,
+    "median_points": 62.5,
+    "median_comments": 20.0
+   },
+   "examples": [
+    "Cloudflare acquires Deno",
+    "Saving 100 terabytes of memory by optimizing 1.1.1.1's DNS cache",
+    "Cloudflare Quick Tunnels",
+    "Incident with Github.com",
+    "Cloudflare OS: an open platform for agents, apps, and work"
+   ]
+  },
+  {
+   "id": "data_db",
+   "name": "Dati, database e analytics",
+   "description": "Database, SQL, data engineering, analytics, visualizzazione, statistica",
+   "patterns": [
+    "\\b(postgres|postgresql|sqlite|mysql|duckdb|clickhouse|sql|database|databases|data engineering|analytics|dataset|datasets|spreadsheet|excel|visuali[sz]ation|dashboard|statistic|query|etl|parquet)\\b"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 102,
+    "share": 0.0076,
+    "median_points": 59.5,
+    "median_comments": 21.0
+   },
+   "examples": [
+    "I hired an illustrator to draw my house. Now it's my Home Assistant dashboard",
+    "PGSimCity - How PostgreSQL Works",
+    "A Preview of DuckDB v2.0",
+    "Hacker wipes Romania's land registry database",
+    "Training a 4B model to produce 81% faster query plans than Postgres"
+   ]
+  },
+  {
+   "id": "health_medicine",
+   "name": "Salute e medicina",
+   "description": "Medicina, farmaci, sanità, nutrizione, neuroscienze cliniche",
+   "patterns": [
+    "\\b(health|medic|drug|drugs|fda|ozempic|glp-1|vaccin|measles|dementia|alzheimer|patients?|hospital|nhs|doctor|cancer|disease|sleep|diet|food|nutrition)\\b"
+   ],
+   "domains": [
+    "nih.gov",
+    "statnews",
+    "nejm"
+   ],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 96,
+    "share": 0.0072,
+    "median_points": 31.0,
+    "median_comments": 9.5
+   },
+   "examples": [
+    "Universal health coverage could save $1T and 114k lives a year: study",
+    "Semaglutide linked to lower predicted dementia risk",
+    "FDA authorizes first wearable device that monitors ketone and blood sugar levels",
+    "Taxi drivers rarely die of Alzheimer's",
+    "Owners mourn spoiled food after firmware update bricks Samsung smart fridges"
+   ]
+  },
+  {
+   "id": "work_life",
+   "name": "Lavoro, produttività e vita",
+   "description": "Cultura del lavoro tech, produttività, focus, burnout, carriera personale, vita privata",
+   "patterns": [
+    "\\b(productiv|focus|attention|burnout|meeting|meetings|parenting|parents?|kids|life|lonel|happiness|sad|ambitio|passionate|habits?|remote|office|career|retire)\\b"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 95,
+    "share": 0.0071,
+    "median_points": 47,
+    "median_comments": 26
+   },
+   "examples": [
+    "Attention is all you have",
+    "Sorry, I'm in a meeting",
+    "Man discovers his parents' coffee machine used 1TB of data in 10 days",
+    "Thanks HN for 15 years of support and helping me find my life's work",
+    "It's getting harder to focus every day"
+   ]
+  },
+  {
+   "id": "marketing_web_biz",
+   "name": "Marketing digitale, ads ed e-commerce",
+   "description": "Advertising, SEO, search, social media marketing, e-commerce, analytics di marketing, creator economy",
+   "patterns": [
+    "\\b(ads?|advertis|adtech|seo|search engine|marketing|e-?commerce|shopify|amazon seller|conversion|newsletter|substack|influencer|creator|brand|cookies?|consent|attribution|affiliate|retail|subscription)\\b"
+   ],
+   "domains": [],
+   "origin": "seed-90d",
+   "stats_90d": {
+    "stories": 44,
+    "share": 0.0033,
+    "median_points": 56.0,
+    "median_comments": 26.5
+   },
+   "examples": [
+    "Kill The Cookie Banner",
+    "Shopify acquires Tailwind",
+    "ChatGPT now knows what you do on other websites via ad collector",
+    "Fingerprints are the new cookies",
+    "Disney+: New user agreement allows ads before movies in all subscriptions"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Rassegna quotidiana di Hacker News: storie, discussioni, tool da provare.">
+<link rel="alternate" type="application/rss+xml" title="Rassegna HN" href="feed.xml">
+<title>Rassegna HN</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,700&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: testata da quotidiano tecnico, colonna di lettura 760px per l'edizione, griglie larghe per tool e temi; una tinta inchiostro-verde con un piccolo marcatore arancio HN. */
+:root{
+  color-scheme:light;
+  --bg:#f3f5f2; --paper:#fbfcfa; --sunk:#e8ece6; --line:#d3dad1; --ink:#14201a; --muted:#5d6b63;
+  --accent:#0d6b5c; --accent-soft:#d6ebe5; --hn:#e2672a;
+  --good:#2f8a55; --bad:#b9433b; --warn:#a97a14; --neutral:#7d8a83;
+  --display:"Newsreader",Georgia,"Times New Roman",serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101613; --paper:#161e1a; --sunk:#1d2722; --line:#2c3a33; --ink:#e4ece7; --muted:#97a69e;
+  --accent:#4fc2a9; --accent-soft:#163a31; --hn:#f08a4b; --good:#5cc489; --bad:#e2766c; --warn:#d9ab43; --neutral:#8d9a93; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101613; --paper:#161e1a; --sunk:#1d2722; --line:#2c3a33; --ink:#e4ece7; --muted:#97a69e;
+  --accent:#4fc2a9; --accent-soft:#163a31; --hn:#f08a4b; --good:#5cc489; --bad:#e2766c; --warn:#d9ab43; --neutral:#8d9a93; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15.5px;line-height:1.55;margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding-block:20px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+p{margin:0}
+a{color:var(--accent);text-underline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+
+.mast{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:3px double var(--line);padding-bottom:12px}
+.mast h1{font-size:clamp(34px,6vw,54px);font-weight:700;letter-spacing:-.01em}
+.mast h1 i{font-style:normal;color:var(--hn)}
+.mast .right{display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-width:0;max-width:100%}
+#edSel{max-width:100%;min-width:0;flex:1 1 220px;text-overflow:ellipsis}
+select,input{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);min-width:0}
+nav.tabs{display:flex;gap:4px;margin-top:14px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{font:inherit;font-size:14px;font-weight:600;background:none;border:0;border-bottom:3px solid transparent;padding:8px 12px;color:var(--muted);cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.state{margin-top:40px;padding:28px;border:1px dashed var(--line);border-radius:10px;background:var(--paper);max-width:640px}
+.state h2{font-size:24px;margin-bottom:8px}
+
+.edition{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;margin-top:22px}
+@media (max-width:900px){.edition{grid-template-columns:minmax(0,1fr)}}
+.lead h2{font-size:clamp(26px,3.6vw,36px);font-weight:700}
+.lead .intro{font-size:17px;margin-top:10px;max-width:68ch}
+.lead .stats{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:13px;color:var(--muted)}
+.block{margin-top:28px}
+.block > h3{font-size:21px;margin-bottom:10px;display:flex;align-items:baseline;gap:10px}
+.block > h3 .label{font-family:var(--mono)}
+.pick{display:grid;grid-template-columns:28px minmax(0,1fr);gap:4px 10px;padding:12px 0;border-top:1px solid var(--line)}
+.pick .n{font-family:var(--display);font-size:22px;font-weight:700;color:var(--accent);line-height:1}
+.pick b{font-weight:600}
+.pick .src{font-size:13px;margin-top:2px}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+.chip .c{font-family:var(--mono);font-size:11px;color:inherit;opacity:.75;margin-left:4px}
+
+.story{border-top:1px solid var(--line);padding:14px 0}
+.story .meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted);align-items:center}
+.story h4{font-family:var(--display);font-size:20px;font-weight:600;margin:4px 0 0;line-height:1.25}
+.story h4 a{color:var(--ink);text-decoration:none}
+.story h4 a:hover{text-decoration:underline}
+.story .sum{margin-top:6px;max-width:70ch}
+.tone{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 7px;border-radius:999px;border:1px solid currentColor}
+.t-entusiasta,.t-positivo{color:var(--good)} .t-negativo{color:var(--bad)} .t-scettico{color:var(--warn)} .t-diviso{color:var(--accent)} .t-neutro{color:var(--neutral)}
+.rel{display:inline-flex;gap:2px;align-items:center} .rel i{width:7px;height:7px;border-radius:2px;background:var(--sunk);display:inline-block} .rel i.on{background:var(--hn)}
+details.more{margin-top:8px}
+details.more summary{cursor:pointer;font-size:13.5px;color:var(--accent);font-weight:600;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"+ "} details.more[open] summary::before{content:"− "}
+.more .body{display:grid;gap:12px;margin-top:10px;padding:12px 14px;background:var(--paper);border:1px solid var(--line);border-radius:8px}
+.pc{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px}
+.pc ul{margin:4px 0 0;padding-left:18px} .pc li{margin-bottom:4px}
+.pc .h{font-weight:600;font-size:13.5px}
+.pc .h.p{color:var(--good)} .pc .h.c{color:var(--bad)}
+blockquote{margin:0;padding:8px 12px;border-left:3px solid var(--hn);background:var(--sunk);border-radius:0 6px 6px 0;font-size:14px;overflow-wrap:anywhere}
+blockquote footer{font-size:12.5px;color:var(--muted);margin-top:4px}
+.sentbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--sunk);max-width:280px}
+.sentbar i{display:block;height:100%}
+
+aside .box{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+aside .box + .box{margin-top:14px}
+aside h3{font-size:18px;margin-bottom:8px}
+aside ul{margin:0;padding-left:18px} aside li{margin-bottom:6px;font-size:14px}
+.topicbar{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:4px 8px;font-size:13.5px;align-items:center}
+.topicbar .b{grid-column:1/-1;height:5px;border-radius:3px;background:var(--sunk);overflow:hidden;margin-bottom:6px}
+.topicbar .b i{display:block;height:100%;background:var(--accent)}
+
+.filters{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;align-items:end}
+.filters label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.tablewrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:720px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--sunk)}
+tr:last-child td{border-bottom:0}
+.src-badge{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--warn);border:1px dashed var(--warn);border-radius:4px;padding:0 5px;margin-right:4px}
+.flag{font-family:var(--mono);font-size:10.5px;color:var(--warn)}
+
+.taxgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px;margin-top:16px}
+.tax{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:14px}
+.tax h4{font-family:var(--display);font-size:17px;margin:0 0 4px}
+.tax .nums{display:flex;gap:14px;margin-top:8px;font-size:12.5px;color:var(--muted)}
+.tax.new{border-color:var(--hn)}
+.method{max-width:72ch;margin-top:18px} .method li{margin-bottom:8px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div>
+      <div class="label">Rassegna quotidiana di Hacker News · ore 7:30</div>
+      <h1>Rassegna <i>HN</i></h1>
+    </div>
+    <div class="right">
+      <label class="label" for="edSel">Edizione</label>
+      <select id="edSel" aria-label="Scegli l'edizione"></select>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="ed" aria-selected="true">Edizione</button>
+    <button role="tab" data-tab="tools" aria-selected="false">Tool da provare</button>
+    <button role="tab" data-tab="topics" aria-selected="false">Aree tematiche</button>
+    <button role="tab" data-tab="method" aria-selected="false">Metodo</button>
+  </nav>
+
+  <main id="view">
+    <div class="state"><h2>Caricamento dell'archivio</h2><p class="muted">Ogni mattina alle 7:30 la routine aggiunge il numero del giorno.</p></div>
+  </main>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = n => (n ?? 0).toLocaleString('it-IT');
+const fmtDate = d => new Date(d + 'T12:00:00Z').toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+const S = {db:null, index:[], taxonomy:[], issue:null, cache:{}, tab:'ed', topic:'', toolMin:'3', toolCat:'', toolQ:'', toolSpan:'all'};
+try { const t = localStorage.getItem('rassegna-tab'); if (t) S.tab = t; } catch(e) {}
+if (/^#(ed|tools|topics|method)$/.test(location.hash)) S.tab = location.hash.slice(1);
+
+function relDots(n){ n = n||0; return `<span class="rel" title="Rilevanza per marketing e analytics: ${n}/5">${[1,2,3,4,5].map(i=>`<i class="${i<=n?'on':''}"></i>`).join('')}</span>`; }
+function sentBar(s){ if(!s) return ''; const t=(s.positive||0)+(s.negative||0)+(s.neutral||0)+(s.mixed||0); if(!t) return '';
+  const w=k=>100*(s[k]||0)/t; return `<div class="sentbar" title="Commenti campionati: ${s.positive||0} positivi, ${s.mixed||0} misti, ${s.negative||0} negativi, ${s.neutral||0} neutri"><i style="width:${w('positive')}%;background:var(--good)"></i><i style="width:${w('mixed')}%;background:var(--warn)"></i><i style="width:${w('negative')}%;background:var(--bad)"></i><i style="width:${w('neutral')}%;background:var(--neutral)"></i></div>`; }
+
+function setTab(t){
+  S.tab = t; try { localStorage.setItem('rassegna-tab', t); } catch(e) {}
+  document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
+  render();
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
+
+function empty(title, text){ $('#view').innerHTML = `<div class="state"><h2>${esc(title)}</h2><p class="muted">${text}</p></div>`; }
+
+async function loadIssue(date){
+  if (S.cache[date]) { S.issue = S.cache[date]; render(); return; }
+  try {
+    const r = await fetch('data/issues/' + date + '.json', {cache: 'no-cache'});
+    if (!r.ok) { empty('Edizione non trovata', 'Il numero del ' + esc(date) + ' non è nell\'archivio.'); return; }
+    S.issue = S.cache[date] = await r.json(); render();
+    try { history.replaceState(null, '', '?d=' + date + location.hash); } catch(e) {}
+  } catch(e) { empty('Edizione non disponibile', 'Lettura non riuscita (' + esc(e.message) + '). Ricarica la pagina.'); }
+}
+
+function storyCard(s){
+  const pro = (s.pro||[]).map(x=>`<li>${esc(x)}</li>`).join(''), con = (s.con||[]).map(x=>`<li>${esc(x)}</li>`).join('');
+  const quotes = (s.best_comments||[]).map(c=>`<blockquote>${esc(c.quote)}<footer><a href="${esc(c.hn_url)}" target="_blank" rel="noopener">${esc(c.author)}</a> · ${c.replies} risposte · ${esc(c.why_it)}</footer></blockquote>`).join('');
+  const tools = (s.tools||[]).filter(t=>(t.relevance||0)>=2).map(t=>`<li><b>${t.url?`<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.name)}</a>`:esc(t.name)}</b> ${relDots(t.relevance)} ${esc(t.what_it)}</li>`).join('');
+  return `<article class="story" data-label="${esc(s.label)}">
+    <div class="meta"><span class="label">${esc(s.label_name)}</span><span class="tone t-${esc(s.tone)}">${esc(s.tone)}</span><span class="mono">${fmt(s.points)} punti · ${fmt(s.comments)} commenti</span>${s.is_show_hn?'<span class="label" style="color:var(--hn)">Show HN</span>':''}${relDots(s.relevance)}</div>
+    <h4><a href="${esc(s.url || s.hn_url)}" target="_blank" rel="noopener">${esc(s.title)}</a></h4>
+    <p class="sum">${s.summary_source==='commenti'?'<span class="src-badge" title="Articolo non leggibile: notizia ricostruita dai commenti">ricostruita dai commenti</span> ':''}${s.summary_source==='titolo'?'<span class="src-badge">solo titolo</span> ':''}${esc(s.summary)}</p>
+    <details class="more"><summary>Discussione, pro e contro</summary><div class="body">
+      <p>${esc(s.discussion)}</p>
+      ${sentBar(s.sentiment_sample)}
+      <div class="pc"><div><div class="h p">A favore</div><ul>${pro||'<li class="muted">nessuno emerso</li>'}</ul></div><div><div class="h c">Contro</div><ul>${con||'<li class="muted">nessuno emerso</li>'}</ul></div></div>
+      ${quotes}
+      ${tools?`<div><div class="h">Tool citati</div><ul>${tools}</ul></div>`:''}
+      <p class="muted" style="font-size:13px">Rilevanza marketing: ${esc(s.relevance_reason)} · <a href="${esc(s.hn_url)}" target="_blank" rel="noopener">Thread su HN</a></p>
+    </div></details>
+  </article>`;
+}
+
+function renderEdition(){
+  const I = S.issue; if (!I) return;
+  const E = I.editorial || {}; const byId = Object.fromEntries(I.stories.map(s=>[s.id,s]));
+  const maxT = Math.max(...I.topics.map(t=>t.points + 2*t.comments), 1);
+  const stories = I.stories.filter(s => !S.topic || s.label === S.topic);
+  const pick = (arr, field) => (arr||[]).map((p,i)=>{ const s = byId[p.story_id]; return `<div class="pick"><span class="n">${i+1}</span><div><b>${esc(p.name || (s && s.title))}</b><p>${esc(p[field])}</p>${s?`<p class="src muted">Da: <a href="${esc(s.hn_url)}" target="_blank" rel="noopener">${esc(s.title)}</a></p>`:''}</div></div>`; }).join('');
+  $('#view').innerHTML = `<div class="edition">
+    <div class="lead">
+      <div class="label">${esc(fmtDate(I.date))}</div>
+      <h2 style="margin-top:6px">${esc(E.headline || 'Rassegna del giorno')}</h2>
+      <p class="intro">${esc(E.intro || '')}</p>
+      <div class="stats mono"><span>${fmt(I.stats.candidates)} storie esaminate</span><span>${fmt(I.stats.selected)} analizzate</span><span>${fmt(I.stats.comments_fetched)} commenti letti</span><span>fonte ranking: ${esc(I.stats.ranking_source)}</span></div>
+      ${E.try_today?.length?`<section class="block"><h3>Da provare oggi</h3>${pick(E.try_today,'why')}</section>`:''}
+      ${E.for_your_work?.length?`<section class="block"><h3>Per il lavoro di marketing</h3>${pick(E.for_your_work,'note')}</section>`:''}
+      <section class="block"><h3>Tutte le storie <span class="label">${stories.length} di ${I.stories.length}</span></h3>
+        <div class="chips" style="margin-bottom:6px"><button class="chip" data-topic="" aria-pressed="${!S.topic}">Tutte</button>${I.topics.map(t=>`<button class="chip" data-topic="${esc(t.label)}" aria-pressed="${S.topic===t.label}">${esc(t.name)}<span class="c">${t.story_ids.length}</span></button>`).join('')}</div>
+        ${stories.map(storyCard).join('')}
+      </section>
+    </div>
+    <aside>
+      <div class="box"><h3>Temi del giorno</h3><div class="topicbar">${I.topics.slice(0,8).map(t=>`<span>${esc(t.name)}</span><span class="mono muted" style="text-align:right">${t.story_ids.length}</span><div class="b"><i style="width:${100*(t.points+2*t.comments)/maxT}%"></i></div>`).join('')}</div><p class="muted" style="font-size:12px;margin-top:4px">Barra: punti + 2 × commenti delle storie del tema.</p></div>
+      ${E.watch?.length?`<div class="box"><h3>Da tenere d'occhio</h3><ul>${E.watch.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>`:''}
+      <div class="box"><h3>Commenti del giorno</h3>${(I.comments_of_day||[]).slice(0,5).map(c=>`<blockquote style="margin-bottom:8px">${esc(c.quote)}<footer><a href="${esc(c.hn_url)}" target="_blank" rel="noopener">${esc(c.author)}</a> su ${esc(c.story_title)}</footer></blockquote>`).join('')}</div>
+      ${I.new_labels?.length?`<div class="box"><h3>Nuove etichette</h3><ul>${I.new_labels.map(l=>`<li><b>${esc(l.name)}</b>: ${esc(l.description)}</li>`).join('')}</ul></div>`:''}
+      <div class="box"><h3>Controlli sui dati</h3><ul style="font-size:13px">
+        <li>Commenti scaricati ${fmt(I.stats.comments_fetched)} su ${fmt(I.stats.comments_listed)} dichiarati (${(100*I.stats.comments_fetched/Math.max(1,I.stats.comments_listed)).toFixed(1)}%; la differenza sono commenti cancellati o [dead]).</li>
+        <li>Citazioni verificate parola per parola: ${I.stats.validation?.quote_ok||0}; scartate: ${I.stats.validation?.quote_dropped||0}.</li>
+        <li>Link di tool non riscontrati nei dati: ${I.stats.validation?.tool_url_unverified||0}.</li>
+        <li>API ufficiale HN ${I.stats.official_api_reachable?'raggiunta':'non raggiungibile, usato Algolia'}.</li></ul></div>
+    </aside></div>`;
+  document.querySelectorAll('.chip[data-topic]').forEach(b => b.onclick = () => { S.topic = b.dataset.topic; renderEdition(); });
+}
+
+function allTools(){
+  if (S.toolSpan === 'day' && S.issue) return (S.issue.tools||[]).map(t=>({...t, date:S.issue.date}));
+  return S.index.flatMap(ix => (ix.tools||[]).map(t=>({...t, date: ix.date})));
+}
+function renderTools(){
+  const all = allTools();
+  const cats = [...new Set(all.map(t=>t.category).filter(Boolean))].sort();
+  const q = S.toolQ.toLowerCase();
+  const rows = all.filter(t => (t.relevance||0) >= +S.toolMin && (!S.toolCat || t.category===S.toolCat) && (!q || (t.name+' '+t.what_it+' '+(t.why_for_reader_it||'')).toLowerCase().includes(q)))
+    .sort((a,b)=>(b.relevance||0)-(a.relevance||0) || b.date.localeCompare(a.date));
+  $('#view').innerHTML = `<div class="filters">
+      <label>Periodo<select id="tSpan"><option value="all">Tutte le edizioni</option><option value="day">Solo edizione selezionata</option></select></label>
+      <label>Rilevanza minima<select id="tMin"><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option><option value="5">5</option></select></label>
+      <label>Categoria<select id="tCat"><option value="">Tutte</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></label>
+      <label style="flex:1;min-width:200px">Cerca<input id="tQ" type="search" placeholder="es. analytics, agenti, scraping" value="${esc(S.toolQ)}"></label>
+    </div>
+    <p class="muted" style="margin-top:10px;font-size:13.5px">${rows.length} tool. La rilevanza (1-5) misura l'utilità per marketing digitale, analytics, e-commerce e automazione AI.</p>
+    <div class="tablewrap"><table><thead><tr><th>Tool</th><th>Cosa fa</th><th>Per te</th><th>Rilevanza</th><th>Maturità</th><th>Edizione</th></tr></thead><tbody>
+    ${rows.map(t=>`<tr><td><b>${t.url?`<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.name)}</a>`:esc(t.name)}</b>${t.url_verified===false?'<div class="flag">link non verificato</div>':''}<div class="muted" style="font-size:12.5px">${esc(t.category||'')}</div></td><td>${esc(t.what_it)}</td><td>${esc(t.why_for_reader_it)}</td><td>${relDots(t.relevance)}</td><td>${esc(t.maturity||'')}</td><td class="mono" style="white-space:nowrap">${esc(t.date)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nessun tool con questi filtri.</td></tr>'}
+    </tbody></table></div>`;
+  $('#tSpan').value=S.toolSpan; $('#tMin').value=S.toolMin; $('#tCat').value=S.toolCat;
+  $('#tSpan').oninput=e=>{S.toolSpan=e.target.value;renderTools()}; $('#tMin').oninput=e=>{S.toolMin=e.target.value;renderTools()};
+  $('#tCat').oninput=e=>{S.toolCat=e.target.value;renderTools()};
+  $('#tQ').oninput=e=>{S.toolQ=e.target.value; clearTimeout(S.tq); S.tq=setTimeout(()=>{renderTools(); const i=$('#tQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length);},250)};
+}
+
+function renderTopics(){
+  const counts = {}; S.index.forEach(ix => (ix.labels||[]).forEach(l => counts[l] = (counts[l]||0)+1));
+  const tx = [...S.taxonomy].sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0) || (b.stats_90d?.stories||0)-(a.stats_90d?.stories||0));
+  $('#view').innerHTML = `<p class="muted" style="margin-top:18px;max-width:72ch">${tx.length} aree. Quelle con bordo arancio sono state create dalla routine perché nessuna etichetta esistente andava bene. "Storie 90g" e la quota vengono dall'analisi iniziale su 13.345 storie; "In rassegna" conta le storie classificate così nelle edizioni.</p>
+    <div class="taxgrid">${tx.map(t=>`<div class="tax ${t.origin && t.origin.startsWith('daily')?'new':''}"><h4>${esc(t.name)}</h4><p class="muted">${esc(t.description)}</p>
+      <div class="nums mono"><span>Storie 90g: ${fmt(t.stats_90d?.stories)}</span><span>${t.stats_90d?((100*t.stats_90d.share).toFixed(1)+'%'):'nuova'}</span><span>In rassegna: ${counts[t.id]||0}</span></div>
+      ${t.examples?.length?`<p style="font-size:12.5px;margin-top:6px" class="muted">Es.: ${esc(t.examples.slice(0,2).join(' · '))}</p>`:''}</div>`).join('')}</div>`;
+}
+
+function renderMethod(){
+  $('#view').innerHTML = `<ol class="method">
+    <li><b>Scouting.</b> Ogni mattina alle 7:30 la routine raccoglie tutte le storie delle ultime 24 ore con almeno 20 punti (Algolia HN) e le posizioni nelle liste top, best, show e ask dell'API ufficiale di Hacker News. Se l'API ufficiale non risponde, usa la front page di Algolia.</li>
+    <li><b>Selezione.</b> Punteggio basato su punti, commenti, posizione in classifica e velocità di crescita. Alle prime 22 storie si aggiungono fino a 6 storie molto rilevanti per marketing e analytics e le 8 migliori Show HN, dove nascono i tool nuovi.</li>
+    <li><b>Commenti.</b> Per ogni storia viene scaricato l'albero completo dei commenti. HN non pubblica il punteggio dei commenti, quindi i più interessanti sono stimati da numero di risposte, lunghezza e segnali di esperienza diretta (uso in produzione, numeri, link). Un campione di 25 per storia va all'analisi.</li>
+    <li><b>Analisi.</b> Claude legge l'articolo quando è raggiungibile e il campione di commenti, e scrive sintesi, tono, argomenti pro e contro, commenti migliori e tool citati, con un voto di rilevanza per marketing digitale, analytics ed e-commerce.</li>
+    <li><b>Classificazione.</b> Ogni storia riceve un'area tra quelle definite il 14 ottobre 2026 su 90 giorni di dati (TF-IDF e NMF su titoli e domini, regole curate, revisione manuale). Un'area nuova si crea solo se nessuna esistente va bene, e da quel giorno resta disponibile.</li>
+    <li><b>Verifiche automatiche.</b> Ogni citazione è confrontata parola per parola con il commento originale, e quelle che non corrispondono vengono scartate. I link dei tool devono comparire nella storia o nei commenti, altrimenti sono segnalati come non verificati. I riferimenti dell'editoriale devono puntare a storie dell'edizione.</li>
+    <li><b>Limiti.</b> L'analisi si basa su un campione dei commenti, non su tutti. Quando l'articolo non è leggibile, la notizia è ricostruita dai commenti ed è segnalata come tale. Il sentiment è una lettura del campione, non una misura statistica. HN rappresenta soprattutto sviluppatori e tecnici, non il mercato.</li>
+  </ol>`;
+}
+
+function render(){
+  if (!S.ready) return;
+  if (!S.index.length && S.tab !== 'topics' && S.tab !== 'method') { empty('Ancora nessuna edizione', 'La prima edizione arriva con la prossima esecuzione della routine (ogni giorno alle 7:30).'); return; }
+  if (S.tab === 'ed') renderEdition(); else if (S.tab === 'tools') renderTools(); else if (S.tab === 'topics') renderTopics(); else renderMethod();
+}
+
+(async () => {
+  try {
+    const [ix, tx] = await Promise.all([fetch('data/index.json', {cache:'no-cache'}).then(r=>r.json()), fetch('data/taxonomy.json', {cache:'no-cache'}).then(r=>r.json())]);
+    S.index = ix.sort((a,b)=>b.date.localeCompare(a.date)); S.taxonomy = tx.labels || tx; S.ready = true;
+  } catch(e) { empty('Archivio non disponibile', 'Lettura dei dati non riuscita (' + esc(e.message) + '). Ricarica la pagina.'); return; }
+  const sel = $('#edSel');
+  sel.innerHTML = S.index.map(ix => `<option value="${esc(ix.date)}">${esc(ix.date)} · ${esc((ix.headline||'').slice(0,48))}${(ix.headline||'').length>48?'…':''}</option>`).join('') || '<option>nessuna edizione</option>';
+  sel.oninput = e => { S.topic = ''; loadIssue(e.target.value); };
+  document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === S.tab));
+  const want = new URLSearchParams(location.search).get('d');
+  const start = S.index.find(i => i.date === want) ? want : (S.index[0] && S.index[0].date);
+  if (start) { sel.value = start; loadIssue(start); } else render();
+})();
+</script>
+
+</body>
+</html>
