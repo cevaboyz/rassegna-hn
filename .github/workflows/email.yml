@@ -37,7 +37,12 @@ jobs:
             files="data/issues/${{ github.event.inputs.date }}.json"
           else
             # only files ADDED by this push: corrections to an existing edition do not re-send it
-            files=$(git diff --name-only --diff-filter=A "${{ github.event.before }}" "${{ github.sha }}" -- 'data/issues/*.json' 2>/dev/null || true)
+            before="${{ github.event.before }}"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              # first push of a branch: compare with the empty tree
+              before=$(git hash-object -t tree /dev/null)
+            fi
+            files=$(git diff --name-only --diff-filter=A "$before" "${{ github.sha }}" -- 'data/issues/*.json' 2>/dev/null || true)
           fi
           echo "files=$(echo $files | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
           echo "Editions to send: $files"
