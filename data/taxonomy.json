@@ -624,6 +624,17 @@
    "examples": [
     "Americans' social activity has steeply declined in the past 30 years"
    ]
+  },
+  {
+   "id": "video_media",
+   "name": "Video, codec e streaming",
+   "description": "Codec video, compressione, formati multimediali e piattaforme di streaming",
+   "patterns": [],
+   "domains": [],
+   "origin": "daily-2026-10-30",
+   "examples": [
+    "H.264 Is Magic (2016)"
+   ]
   }
  ]
 }
