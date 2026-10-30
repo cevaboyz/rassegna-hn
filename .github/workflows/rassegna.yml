@@ -1,0 +1,170 @@
+# Builds and publishes the daily edition entirely inside GitHub Actions.
+# Claude (Claude Code GitHub Action, authenticated with the owner's Claude subscription) does the analysis and the editorial;
+# every deterministic check (scouting sanity, quote/link validation, private deny-list) runs in plain shell steps,
+# so nothing is published unless those checks pass, whatever the model wrote.
+#
+# Required repository secrets:
+#   CLAUDE_CODE_OAUTH_TOKEN  token from `claude setup-token` (valid one year)
+#   READER_PROFILE           reader profile text (private: never written to the repo)
+#   DENY_TERMS               private terms, one per line (never written to the repo)
+#   RESEND_API_KEY, MAIL_TO  already used by email.yml (also used here to report failures)
+# Optional: MAIL_FROM
+name: Rassegna quotidiana
+
+on:
+  schedule:
+    # GitHub cron is UTC: 04:23 UTC = 05:23 in winter, 06:23 in summer (Rome). Runs can start late under load.
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # commit the edition
+  actions: write    # start email.yml (pushes made with GITHUB_TOKEN do not trigger other workflows)
+  id-token: write
+
+concurrency:
+  group: rassegna-daily
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Edition date
+        id: date
+        run: |
+          D=$(TZ=Europe/Rome date +%F)
+          echo "date=$D" >> "$GITHUB_OUTPUT"
+          if [ -f "data/issues/$D.json" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"; echo "::notice::Edition $D already published, nothing to do"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Private files (from secrets, never committed)
+        if: steps.date.outputs.exists == 'false'
+        env:
+          READER_PROFILE: ${{ secrets.READER_PROFILE }}
+          DENY_TERMS: ${{ secrets.DENY_TERMS }}
+        run: |
+          set -euo pipefail
+          mkdir -p .run/run .run/private
+          printf '%s\n' "$DENY_TERMS" | sed 's/\r$//' | sed '/^[[:space:]]*$/d' > .run/private/deny.txt
+          # mask each term individually so it can never show up in the public Actions log
+          while IFS= read -r t; do echo "::add-mask::$t"; done < .run/private/deny.txt
+          printf '%s\n' "$READER_PROFILE" > .run/private/profile.txt
+          while IFS= read -r l; do [ -n "$l" ] && echo "::add-mask::$l"; done < .run/private/profile.txt
+          [ -s .run/private/deny.txt ] && [ -s .run/private/profile.txt ] || { echo "::error::READER_PROFILE or DENY_TERMS secret missing"; exit 1; }
+          echo "${{ steps.date.outputs.date }}" > .run/date.txt
+
+      - name: Scouting (Hacker News, last 24h)
+        if: steps.date.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          for attempt in 1 2; do
+            python3 -I scripts/hn_daily.py --taxonomy data/taxonomy.json --out .run/run --issues-dir data/issues > .run/scout.json && \
+            python3 -I - <<'EOF' && break
+          import json, sys
+          m = json.load(open(".run/scout.json")); print(m)
+          ok = 20 <= m["selected"] <= 40 and not m["errors"] and m["comments_fetched_total"] >= 0.8 * m["comments_listed_total"]
+          sys.exit(0 if ok else 1)
+          EOF
+            if [ "$attempt" = 2 ]; then
+              # second failure: go on only if the selection is still usable, as a degraded edition
+              python3 -I -c 'import json,sys; m=json.load(open(".run/scout.json")); sys.exit(0 if m["selected"]>=15 else 1)' \
+                || { echo "::error::Scouting failed twice"; exit 1; }
+              echo "::warning::Scouting degraded (errors or partial comments), continuing"; break
+            fi
+            echo "Scouting not OK, retrying in 2 minutes"; sleep 120
+          done
+
+      - name: Analyst briefs
+        if: steps.date.outputs.exists == 'false'
+        run: |
+          python3 -I - <<'EOF'
+          tpl = open("scripts/analyst_prompt.md").read()
+          prof = open(".run/private/profile.txt").read().strip()
+          for b in (1, 2, 3):
+              open(f".run/run/prompt_{b}.md", "w").write(
+                  tpl.replace("{BATCH}", f".run/run/digest_batch{b}.json").replace("{TAXONOMY}", "data/taxonomy.json")
+                     .replace("{OUT}", f".run/run/analysis_{b}.json").replace("{PROFILE}", prof))
+          EOF
+
+      - name: Claude, analysis and editorial
+        if: steps.date.outputs.exists == 'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "Read the file scripts/ci_prompt.md and carry out exactly the task it describes. It is your full brief."
+          # no general shell: Claude can only run the validator; articles it reads cannot make it execute anything else
+          claude_args: |
+            --max-turns 150
+            --allowedTools "Agent,Task,Read,Write,Edit,Glob,Grep,WebFetch,Bash(python3 -I scripts/assemble.py:*)"
+
+      - name: Gate (deterministic checks)
+        if: steps.date.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          D="${{ steps.date.outputs.date }}"
+          python3 -I scripts/assemble.py --run .run/run --taxonomy data/taxonomy.json --date "$D" \
+            --editorial .run/run/editorial.json --deny-file .run/private/deny.txt > .run/report.json
+          python3 -I - <<'EOF'
+          import json, sys
+          r = json.load(open(".run/report.json")); meta = json.load(open(".run/run/run_meta.json"))
+          ed = json.load(open(".run/run/editorial.json")); v = r["validation"]
+          print(json.dumps({k: r[k] for k in ("stories", "tools", "new_labels", "bytes", "fits_256KiB", "validation")}, ensure_ascii=False))
+          problems = []
+          if v.get("deny_hit"): problems.append("private term in output")
+          if v.get("editorial_bad_ref"): problems.append("editorial points to missing stories")
+          if v.get("bad_label"): problems.append("unknown labels")
+          if not r["fits_256KiB"]: problems.append("issue too large")
+          if r["stories"] < meta["selected"]: problems.append(f"only {r['stories']}/{meta['selected']} stories analysed")
+          if not ed.get("headline") or not ed.get("intro"): problems.append("editorial incomplete")
+          if problems:
+              print("::error::Gate failed: " + "; ".join(problems)); sys.exit(1)
+          EOF
+
+      - name: Publish, commit, push
+        if: steps.date.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          D="${{ steps.date.outputs.date }}"
+          python3 -I scripts/publish.py --run .run/run --date "$D" --site . \
+            --base-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          # last line of defence: -q so a match is never printed to the public log
+          if grep -qriwF -f .run/private/deny.txt data feed.xml; then echo "::error::Private term found in site files, not publishing"; exit 1; fi
+          git add data feed.xml
+          git -c user.name="Rassegna HN" -c user.email="rassegna-hn@users.noreply.github.com" commit -q -m "Edizione $D"
+          for i in 1 2 3; do
+            git fetch -q origin main && git rebase -q FETCH_HEAD && git push -q origin HEAD:main && break
+            [ "$i" = 3 ] && exit 1; sleep 10
+          done
+          gh workflow run email.yml -f date="$D"
+          echo "::notice::Published https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/?d=$D"
+
+      - name: Report failure by email
+        if: failure()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          FROM="${MAIL_FROM:-Rassegna HN <onboarding@resend.dev>}"
+          jq -n --arg from "$FROM" --arg to "$MAIL_TO" --arg url "$RUN_URL" --arg d "${{ steps.date.outputs.date }}" \
+            '{from:$from, to:[$to], subject:("Rassegna HN " + $d + ": generazione fallita"),
+              text:("La rassegna di oggi non è stata pubblicata. Dettagli del run: " + $url)}' |
+          curl -sS -X POST https://api.resend.com/emails -H "Authorization: Bearer $RESEND_API_KEY" \
+               -H "Content-Type: application/json" --data @- || true
