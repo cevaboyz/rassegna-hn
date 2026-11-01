@@ -3,90 +3,218 @@
 
 Usage: python3 scripts/render_email.py data/issues/YYYY-MM-DD.json --site-url URL --out-dir OUT
 Writes OUT/subject.txt, OUT/email.html, OUT/email.txt. Standard library only, so it runs on a bare GitHub runner.
+
+Layout choices (for a quick morning read, not a wall of text):
+- every section has an emoji header and its own white card on a grey background;
+- each story is a small card: label chip, title, one meta line (points, comments, mood), a short summary, one link;
+- long texts are cut at a sentence boundary; the full version stays on the site;
+- tables + inline styles only, because Gmail and Outlook drop <style> blocks and flexbox.
+Every field is read with .get(): a partial issue (fallback editorial, missing tools) still renders.
 """
-import argparse, json, html, os
+import argparse, json, html, os, re
 
 ap = argparse.ArgumentParser()
 ap.add_argument("issue"); ap.add_argument("--site-url", default=""); ap.add_argument("--out-dir", default=".")
 a = ap.parse_args()
-I = json.load(open(a.issue)); E = I.get("editorial", {}); st = I["stats"]; v = st.get("validation", {})
-by_id = {s["id"]: s for s in I["stories"]}
+I = json.load(open(a.issue)); E = I.get("editorial") or {}; st = I.get("stats") or {}; v = st.get("validation") or {}
+stories = I.get("stories") or []
+by_id = {s.get("id"): s for s in stories}
 site = a.site_url.rstrip("/")
 link_issue = f"{site}/?d={I['date']}" if site else ""
 e = html.escape
 
-INK, MUTED, ACC, LINE, BG = "#14201a", "#5d6b63", "#0d6b5c", "#d3dad1", "#f3f5f2"
-font = "font-family:Georgia,'Times New Roman',serif"
-sans = "font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif"
+# palette and fonts
+INK, MUTED, ACC, LINE, BG, SOFT, WARM = "#14201a", "#5d6b63", "#0d6b5c", "#dfe5dd", "#eef1ec", "#f6f8f5", "#e2672a"
+sans = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+serif = "font-family:Georgia,'Times New Roman',serif"
 
-def h2(t): return f'<h2 style="{font};font-size:20px;color:{INK};margin:28px 0 8px;border-top:1px solid {LINE};padding-top:16px">{e(t)}</h2>'
-def a_(url, text): return f'<a href="{e(url)}" style="color:{ACC}">{e(text)}</a>' if url else e(text)
+LABEL_EMOJI = {
+    "dev_tools": "🛠️", "ai_society": "🤖", "ai_models": "🧠", "ai_industry": "🏭", "startups_business": "🚀", "big_tech": "🏢",
+    "policy_law": "⚖️", "ai_agents_coding": "🧑‍💻", "science": "🔬", "culture_history": "📜", "hardware": "🔌",
+    "security_privacy": "🔒", "os_systems": "💻", "games_creative": "🎮", "web_browsers": "🌐", "programming_langs": "⌨️",
+    "energy_env": "🌱", "software_eng": "🏗️", "cloud_devops": "☁️", "data_db": "🗄️", "health_medicine": "🩺",
+    "work_life": "🧘", "marketing_web_biz": "📈", "society_trends": "🌍", "video_media": "🎬",
+}
+TONE = {"entusiasta": "🤩 entusiasta", "positivo": "🙂 positivo", "diviso": "⚖️ diviso", "scettico": "🤨 scettico",
+        "negativo": "👎 negativo", "neutro": "😐 neutro"}
 
-parts, txt = [], []
-parts.append(f'<p style="{sans};font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:{MUTED};margin:0">Rassegna HN · {e(I["date"])}</p>')
-parts.append(f'<h1 style="{font};font-size:26px;line-height:1.2;color:{INK};margin:6px 0 10px">{e(E.get("headline", "Rassegna del giorno"))}</h1>')
-parts.append(f'<p style="{sans};font-size:16px;line-height:1.55;color:{INK};margin:0">{e(E.get("intro", ""))}</p>')
-txt += [f"RASSEGNA HN · {I['date']}", E.get("headline", ""), "", E.get("intro", ""), ""]
 
-if E.get("try_today"):
-    parts.append(h2("Da provare oggi")); txt.append("DA PROVARE OGGI")
-    for t in E["try_today"]:
+def short(text, limit=260):
+    """Cut at the last sentence end before `limit` characters; fall back to a word boundary."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    m = list(re.finditer(r"[.!?](\s|$)", cut))
+    if m and m[-1].end() > limit * 0.5:
+        return cut[:m[-1].end()].strip()
+    return cut.rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
+def a_(url, text, color=ACC, bold=False):
+    w = "font-weight:600;" if bold else ""
+    return f'<a href="{e(url)}" style="color:{color};{w}text-decoration:none">{e(text)}</a>' if url else e(text)
+
+
+def button(url, text):
+    if not url:
+        return ""
+    return (f'<a href="{e(url)}" style="{sans};display:inline-block;font-size:13px;font-weight:600;color:{ACC};'
+            f'text-decoration:none;border:1px solid {ACC};border-radius:6px;padding:5px 10px;margin:6px 6px 0 0">{e(text)}</a>')
+
+
+def chip(text):
+    return (f'<span style="{sans};display:inline-block;font-size:12px;color:{INK};background:{BG};border-radius:10px;'
+            f'padding:2px 8px;margin:0 6px 4px 0">{e(text)}</span>')
+
+
+def section(emoji, title, inner):
+    return (f'<tr><td style="padding:0 0 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'style="background:#ffffff;border:1px solid {LINE};border-radius:10px"><tr><td style="padding:18px 18px 8px">'
+            f'<p style="{sans};font-size:17px;font-weight:700;color:{INK};margin:0 0 12px">{emoji}&nbsp; {e(title)}</p>'
+            f'{inner}</td></tr></table></td></tr>')
+
+
+def item(inner, last=False):
+    border = "" if last else f"border-bottom:1px solid {LINE};"
+    return f'<div style="{border}padding:0 0 12px;margin:0 0 12px">{inner}</div>'
+
+
+def p(text, size=15, color=INK, extra=""):
+    return f'<p style="{sans};font-size:{size}px;line-height:1.5;color:{color};margin:0 0 4px;{extra}">{text}</p>'
+
+
+tool_url = {}
+for t in I.get("tools") or []:
+    if t.get("url") and t.get("url_verified") and t.get("name"):
+        tool_url.setdefault(t["name"].lower(), t["url"])
+
+sections, txt = [], []
+date_it = "/".join(reversed(I["date"].split("-")))
+
+# ---- header
+header = (f'<tr><td style="padding:4px 4px 16px">'
+          f'<p style="{sans};font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:{MUTED};margin:0">📰 Rassegna HN · {e(date_it)}</p>'
+          f'<h1 style="{serif};font-size:26px;line-height:1.25;color:{INK};margin:6px 0 12px">{e(E.get("headline") or "Rassegna del giorno")}</h1>')
+if E.get("intro"):
+    header += p(e(E["intro"]), 16, INK, "line-height:1.6")
+n_comm = sum(1 for s in stories if s.get("summary_source") == "commenti")
+header += p(f'🗂️ {len(stories)} storie · 💬 {st.get("comments_fetched", 0)} commenti letti'
+            + (f' · {a_(link_issue, "apri sul sito ↗")}' if link_issue else ""), 13, MUTED, "margin-top:10px")
+header += "</td></tr>"
+txt += [f"📰 RASSEGNA HN · {date_it}", "", E.get("headline") or "Rassegna del giorno", ""]
+if E.get("intro"):
+    txt += [E["intro"], ""]
+
+# ---- try today
+tt = E.get("try_today") or []
+if tt:
+    rows = []
+    txt += ["🧪 DA PROVARE OGGI", ""]
+    for k, t in enumerate(tt):
         s = by_id.get(t.get("story_id"), {})
-        parts.append(f'<p style="{sans};font-size:15px;line-height:1.5;color:{INK};margin:0 0 12px"><b>{e(t.get("name", ""))}</b><br>{e(t.get("why", ""))}'
-                     f'<br><span style="font-size:13px;color:{MUTED}">Da: {a_(s.get("hn_url"), s.get("title", ""))}</span></p>')
-        txt += [f"- {t.get('name','')}: {t.get('why','')} ({s.get('hn_url','')})"]
-    txt.append("")
+        url = tool_url.get((t.get("name") or "").lower())
+        inner = (p(f'<b>{e(t.get("name", ""))}</b>', 16) + p(e(short(t.get("why"), 320)), 14, INK)
+                 + button(url, "Apri ↗") + button(s.get("hn_url"), "💬 Discussione"))
+        rows.append(item(inner, k == len(tt) - 1))
+        txt += [f"• {t.get('name', '')}", f"  {short(t.get('why'), 320)}"] + ([f"  {url}"] if url else []) + [f"  {s.get('hn_url', '')}", ""]
+    sections.append(section("🧪", "Da provare oggi", "".join(rows)))
 
-if E.get("for_your_work"):
-    parts.append(h2("Per il lavoro di marketing")); txt.append("PER IL LAVORO DI MARKETING")
-    for f in E["for_your_work"]:
+# ---- for your work
+fw = E.get("for_your_work") or []
+if fw:
+    rows = []
+    txt += ["💼 PER IL TUO LAVORO", ""]
+    for k, f in enumerate(fw):
         s = by_id.get(f.get("story_id"), {})
-        parts.append(f'<p style="{sans};font-size:15px;line-height:1.5;color:{INK};margin:0 0 12px">{a_(s.get("url") or s.get("hn_url"), s.get("title", ""))}<br>{e(f.get("note", ""))}</p>')
-        txt += [f"- {s.get('title','')}: {f.get('note','')} ({s.get('hn_url','')})"]
-    txt.append("")
+        inner = p(a_(s.get("url") or s.get("hn_url"), s.get("title", ""), INK, True), 15) + p(e(short(f.get("note"), 320)), 14, MUTED)
+        rows.append(item(inner, k == len(fw) - 1))
+        txt += [f"• {s.get('title', '')}", f"  {short(f.get('note'), 320)}", ""]
+    sections.append(section("💼", "Per il tuo lavoro", "".join(rows)))
 
-parts.append(h2("Le storie del giorno")); txt.append("LE STORIE DEL GIORNO")
-for s in I["stories"][:8]:
-    badge = " · ricostruita dai commenti" if s.get("summary_source") == "commenti" else ""
-    parts.append(f'<p style="{sans};font-size:15px;line-height:1.5;color:{INK};margin:0 0 14px">'
-                 f'<span style="font-size:12px;color:{MUTED}">{e(s.get("label_name", ""))} · {s.get("points", 0)} punti · {s.get("comments", 0)} commenti{badge}</span><br>'
-                 f'<b>{a_(s.get("url") or s.get("hn_url"), s["title"])}</b><br>{e(s.get("summary", ""))}<br>'
-                 f'<span style="font-size:13px">{a_(s["hn_url"], "Discussione su HN")}</span></p>')
-    txt += [f"- {s['title']} ({s.get('points',0)} punti, {s.get('comments',0)} commenti)", f"  {s.get('summary','')}", f"  {s['hn_url']}"]
-txt.append("")
+# ---- top stories
+top = stories[:8]
+if top:
+    rows = []
+    txt += ["🔥 LE STORIE DEL GIORNO", ""]
+    for k, s in enumerate(top):
+        emo = LABEL_EMOJI.get(s.get("label"), "📌")
+        meta = f'▲ {s.get("points", 0)} · 💬 {s.get("comments", 0)}'
+        if s.get("tone") in TONE:
+            meta += f' · {TONE[s["tone"]]}'
+        badge = chip("🧩 ricostruita dai commenti") if s.get("summary_source") == "commenti" else ""
+        # the chip already says "ricostruita dai commenti": drop the prefix and restore the capital letter
+        summary = short(re.sub(r"^Ricostruita dai commenti:\s*", "", s.get("summary") or ""), 280)
+        summary = summary[:1].upper() + summary[1:]
+        inner = (chip(f'{emo} {s.get("label_name", "")}') + badge
+                 + p(a_(s.get("url") or s.get("hn_url"), s.get("title", ""), INK, True), 16, INK, "margin-top:4px")
+                 + p(e(meta), 12, MUTED)
+                 + (p(e(summary), 14, INK, "margin-top:6px") if summary else "")
+                 + p(a_(s.get("hn_url"), "Leggi la discussione →"), 13, ACC, "margin-top:4px"))
+        rows.append(item(inner, k == len(top) - 1))
+        txt += [f"{emo} {s.get('title', '')}", f"   ▲ {s.get('points', 0)} · 💬 {s.get('comments', 0)}"
+                + (" · ricostruita dai commenti" if badge else ""), f"   {summary}", f"   {s.get('hn_url', '')}", ""]
+    more = len(stories) - len(top)
+    if more > 0 and link_issue:
+        rows.append(p(a_(link_issue, f"…e altre {more} storie sul sito →"), 14, ACC, "margin:0 0 10px"))
+    sections.append(section("🔥", "Le storie del giorno", "".join(rows)))
 
-tools = [t for t in I.get("tools", []) if (t.get("relevance") or 0) >= 3]
+# ---- tools
+tools = [t for t in I.get("tools") or [] if (t.get("relevance") or 0) >= 3][:6]
 if tools:
-    parts.append(h2("Tool rilevanti")); txt.append("TOOL RILEVANTI")
-    for t in tools[:8]:
-        flag = " (link non verificato)" if t.get("url_verified") is False else ""
-        parts.append(f'<p style="{sans};font-size:14px;line-height:1.5;color:{INK};margin:0 0 10px"><b>{a_(t.get("url"), t["name"])}</b>{e(flag)} · {e(t.get("what_it", ""))}<br>'
-                     f'<span style="color:{MUTED}">{e(t.get("why_for_reader_it", ""))}</span></p>')
-        txt += [f"- {t['name']}: {t.get('what_it','')} {t.get('url') or ''}{flag}"]
-    txt.append("")
+    rows = []
+    txt += ["🛠️ TOOL DA TENERE D'OCCHIO", ""]
+    for k, t in enumerate(tools):
+        flag = " ⚠️ link da verificare" if t.get("url_verified") is False else ""
+        inner = (p(f'{a_(t.get("url"), t.get("name", ""), INK, True)}<span style="color:{MUTED};font-size:12px">{e(flag)}</span>', 15)
+                 + p(e(short(t.get("what_it"), 180)), 14, INK)
+                 + (p("👉 " + e(short(t.get("why_for_reader_it"), 200)), 13, MUTED) if t.get("why_for_reader_it") else ""))
+        rows.append(item(inner, k == len(tools) - 1))
+        txt += [f"• {t.get('name', '')}{flag}: {short(t.get('what_it'), 180)}"] + ([f"  {t['url']}"] if t.get("url") else []) + [""]
+    sections.append(section("🛠️", "Tool da tenere d'occhio", "".join(rows)))
 
-cod = I.get("comments_of_day", [])[:2]
+# ---- comments of the day
+cod = (I.get("comments_of_day") or [])[:2]
 if cod:
-    parts.append(h2("Commenti del giorno")); txt.append("COMMENTI DEL GIORNO")
+    rows = []
+    txt += ["💬 COMMENTI DEL GIORNO", ""]
     for c in cod:
-        parts.append(f'<blockquote style="{sans};font-size:14px;line-height:1.5;color:{INK};margin:0 0 12px;padding:8px 12px;border-left:3px solid #e2672a;background:{BG}">'
-                     f'{e(c["quote"])}<br><span style="font-size:12px;color:{MUTED}">{a_(c.get("hn_url"), c.get("author", ""))} su {e(c.get("story_title", ""))}</span></blockquote>')
-        txt += [f'"{c["quote"]}" ({c.get("author","")}, {c.get("hn_url","")})']
-    txt.append("")
+        rows.append(f'<div style="{sans};font-size:14px;line-height:1.55;color:{INK};margin:0 0 12px;padding:10px 14px;'
+                    f'border-left:3px solid {WARM};background:{SOFT};border-radius:0 8px 8px 0">“{e(c.get("quote", ""))}”'
+                    f'<br><span style="font-size:12px;color:{MUTED}">— {a_(c.get("hn_url"), c.get("author", ""), MUTED)} su {e(c.get("story_title", ""))}</span></div>')
+        txt += [f'“{c.get("quote", "")}”', f"  — {c.get('author', '')}, {c.get('hn_url', '')}", ""]
+    sections.append(section("💬", "Commenti del giorno", "".join(rows)))
 
-checks = (f"{st['candidates']} storie esaminate, {st['selected']} analizzate; {st['comments_fetched']} commenti letti su {st['comments_listed']} dichiarati; "
-          f"notizie da articolo {v.get('from_article', 0)}, ricostruite dai commenti {v.get('from_comments', 0)}; "
-          f"citazioni verificate {v.get('quote_ok', 0)}, scartate {v.get('quote_dropped', 0)}; link non verificati {v.get('tool_url_unverified', 0)}; classifica: {st['ranking_source']}.")
-parts.append(f'<p style="{sans};font-size:12px;line-height:1.5;color:{MUTED};margin:28px 0 0;border-top:1px solid {LINE};padding-top:12px">Controlli: {e(checks)}'
-             + (f'<br>{a_(link_issue, "Leggi l’edizione completa sul sito")}' if link_issue else "") + "</p>")
-txt += ["Controlli: " + checks] + ([f"Edizione completa: {link_issue}"] if link_issue else [])
+# ---- watch
+watch = E.get("watch") or []
+if watch:
+    lis = "".join(f'<li style="margin:0 0 8px">{e(short(w, 240))}</li>' for w in watch)
+    sections.append(section("👀", "Da seguire", f'<ul style="{sans};font-size:14px;line-height:1.5;color:{INK};margin:0 0 10px;padding-left:20px">{lis}</ul>'))
+    txt += ["👀 DA SEGUIRE", ""] + [f"• {short(w, 240)}" for w in watch] + [""]
 
-body = (f'<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
-        f'<body style="margin:0;padding:0;background:{BG}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{BG}"><tr><td align="center" style="padding:20px 12px">'
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border:1px solid {LINE};border-radius:8px"><tr><td style="padding:24px 22px">'
-        + "".join(parts) + "</td></tr></table></td></tr></table></body></html>")
+# ---- footer
+checks = (f"{st.get('candidates', 0)} storie esaminate, {st.get('selected', len(stories))} analizzate · "
+          f"{v.get('from_article', 0)} dall'articolo, {n_comm} ricostruite dai commenti · "
+          f"citazioni verificate {v.get('quote_ok', 0)}, scartate {v.get('quote_dropped', 0)} · link non verificati {v.get('tool_url_unverified', 0)}")
+footer = (f'<tr><td style="padding:6px 6px 0">'
+          + p("✅ Controlli: " + e(checks), 12, MUTED)
+          + p("Contenuti generati automaticamente da fonti pubbliche: possono contenere errori. Le affermazioni sono attribuite alle fonti.", 12, MUTED)
+          + (p(a_(link_issue, "📖 Leggi l'edizione completa sul sito"), 13, ACC, "margin-top:8px") if link_issue else "")
+          + "</td></tr>")
+txt += ["✅ Controlli: " + checks] + ([f"📖 Edizione completa: {link_issue}"] if link_issue else [])
+
+preheader = short(E.get("intro") or E.get("headline") or "", 140)
+body = (f'<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'<title>{e(E.get("headline") or "Rassegna HN")}</title></head>'
+        f'<body style="margin:0;padding:0;background:{BG}">'
+        # hidden preheader: the preview line shown next to the subject in most inboxes
+        f'<div style="display:none;max-height:0;overflow:hidden;opacity:0">{e(preheader)}</div>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{BG}"><tr><td align="center" style="padding:20px 10px">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px">'
+        + header + "".join(sections) + footer
+        + "</table></td></tr></table></body></html>")
 os.makedirs(a.out_dir, exist_ok=True)
 open(os.path.join(a.out_dir, "email.html"), "w").write(body)
 open(os.path.join(a.out_dir, "email.txt"), "w").write("\n".join(txt))
-open(os.path.join(a.out_dir, "subject.txt"), "w").write(f"Rassegna HN {I['date']} · {E.get('headline', '')}"[:150])
+open(os.path.join(a.out_dir, "subject.txt"), "w").write(f"📰 Rassegna HN {date_it} · {E.get('headline') or ''}"[:150])
 print("ok", len(body))
