@@ -1,20 +1,27 @@
-# Builds and publishes the daily edition entirely inside GitHub Actions.
-# Claude (Claude Code GitHub Action, authenticated with the owner's Claude subscription) does the analysis and the editorial;
-# every deterministic check (scouting sanity, quote/link validation, private deny-list) runs in plain shell steps,
-# so nothing is published unless those checks pass, whatever the model wrote.
+# Rassegna HN: builds and publishes the daily edition entirely inside GitHub Actions.
+#
+# Design (each stage can fail without killing the edition):
+#   1. scout    deterministic: picks today's HN stories and downloads comments (retry once).
+#   2. analyze  3 parallel jobs, one Claude session per batch, no subagents (one session = one simple task).
+#               Output is validated in plain Python; missing stories get one targeted retry.
+#   3. publish  sanitises the analyses (unknown labels, private terms), asks Claude for the editorial
+#               (retry once, then a neutral fallback), runs the deterministic gate, commits, starts the email.
+#   4. notify   emails you if any stage failed.
+# Claude never gets a shell and never sees git: everything that touches the repo is plain shell.
 #
 # Required repository secrets:
 #   CLAUDE_CODE_OAUTH_TOKEN  token from `claude setup-token` (valid one year)
-#   READER_PROFILE           reader profile text (private: never written to the repo)
-#   DENY_TERMS               private terms, one per line (never written to the repo)
-#   RESEND_API_KEY, MAIL_TO  already used by email.yml (also used here to report failures)
+#   READER_PROFILE           reader profile text (private: never written to the repo or to artifacts)
+#   DENY_TERMS               private terms, one per line (never written to the repo or to artifacts)
+#   RESEND_API_KEY, MAIL_TO  also used by email.yml
 # Optional: MAIL_FROM
 name: Rassegna quotidiana
 
 on:
   schedule:
-    # GitHub cron is UTC: 04:23 UTC = 05:23 in winter, 06:23 in summer (Rome). Runs can start late under load.
+    # GitHub cron is UTC and can start late. Two slots: the second one does nothing if the first already published.
     - cron: "23 4 * * *"
+    - cron: "41 6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -26,16 +33,25 @@ concurrency:
   group: rassegna-daily
   cancel-in-progress: false
 
+env:
+  CLAUDE_TOOLS_BATCH: "Read,Write,Edit,Glob,Grep,WebFetch"
+  CLAUDE_TOOLS_EDITORIAL: "Read,Write,Edit,Glob,Grep"
+  CLAUDE_BLOCKED: "Agent,Task,Bash,NotebookEdit"
+
 jobs:
-  build:
+  # ---------------------------------------------------------------- 1. scouting
+  scout:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 15
+    outputs:
+      date: ${{ steps.date.outputs.date }}
+      skip: ${{ steps.date.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -45,126 +61,488 @@ jobs:
           D=$(TZ=Europe/Rome date +%F)
           echo "date=$D" >> "$GITHUB_OUTPUT"
           if [ -f "data/issues/$D.json" ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"; echo "::notice::Edition $D already published, nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; echo "::notice::Edition $D already published, nothing to do"
           else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Private files (from secrets, never committed)
-        if: steps.date.outputs.exists == 'false'
-        env:
-          READER_PROFILE: ${{ secrets.READER_PROFILE }}
-          DENY_TERMS: ${{ secrets.DENY_TERMS }}
-        run: |
-          set -euo pipefail
-          mkdir -p .run/run .run/private
-          printf '%s\n' "$DENY_TERMS" | sed 's/\r$//' | sed '/^[[:space:]]*$/d' > .run/private/deny.txt
-          # mask each term individually so it can never show up in the public Actions log
-          while IFS= read -r t; do echo "::add-mask::$t"; done < .run/private/deny.txt
-          printf '%s\n' "$READER_PROFILE" > .run/private/profile.txt
-          while IFS= read -r l; do [ -n "$l" ] && echo "::add-mask::$l"; done < .run/private/profile.txt
-          [ -s .run/private/deny.txt ] && [ -s .run/private/profile.txt ] || { echo "::error::READER_PROFILE or DENY_TERMS secret missing"; exit 1; }
-          echo "${{ steps.date.outputs.date }}" > .run/date.txt
-
       - name: Scouting (Hacker News, last 24h)
-        if: steps.date.outputs.exists == 'false'
+        if: steps.date.outputs.skip == 'false'
         run: |
-          set -euo pipefail
-          for attempt in 1 2; do
-            python3 -I scripts/hn_daily.py --taxonomy data/taxonomy.json --out .run/run --issues-dir data/issues > .run/scout.json && \
-            python3 -I - <<'EOF' && break
+          set -uo pipefail
+          mkdir -p .run/run
+          check() {
+            python3 -I - "$1" <<'EOF'
           import json, sys
+          strict = sys.argv[1] == "strict"
           m = json.load(open(".run/scout.json")); print(m)
-          ok = 20 <= m["selected"] <= 40 and not m["errors"] and m["comments_fetched_total"] >= 0.8 * m["comments_listed_total"]
+          if strict:
+              ok = 20 <= m["selected"] <= 40 and not m["errors"] and m["comments_fetched_total"] >= 0.8 * m["comments_listed_total"]
+          else:
+              ok = m["selected"] >= 12
           sys.exit(0 if ok else 1)
           EOF
-            if [ "$attempt" = 2 ]; then
-              # second failure: go on only if the selection is still usable, as a degraded edition
-              python3 -I -c 'import json,sys; m=json.load(open(".run/scout.json")); sys.exit(0 if m["selected"]>=15 else 1)' \
-                || { echo "::error::Scouting failed twice"; exit 1; }
-              echo "::warning::Scouting degraded (errors or partial comments), continuing"; break
+          }
+          for attempt in 1 2 3; do
+            if python3 -I scripts/hn_daily.py --taxonomy data/taxonomy.json --out .run/run --issues-dir data/issues > .run/scout.json; then
+              check strict && exit 0
+              if [ "$attempt" = 3 ]; then
+                check degraded && { echo "::warning::Scouting degraded, continuing with a smaller edition"; exit 0; }
+              fi
+            else
+              echo "Scouting script failed (attempt $attempt)"
             fi
-            echo "Scouting not OK, retrying in 2 minutes"; sleep 120
+            [ "$attempt" = 3 ] && { echo "::error::Scouting failed three times"; exit 1; }
+            sleep 120
           done
 
-      - name: Analyst briefs
-        if: steps.date.outputs.exists == 'false'
+      # digests are public HN data; kept for one day only
+      - uses: actions/upload-artifact@v4
+        if: steps.date.outputs.skip == 'false'
+        with:
+          name: digest
+          path: |
+            .run/run/digest_batch*.json
+            .run/run/run_meta.json
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- 2. analysis, 3 batches in parallel
+  analyze:
+    needs: scout
+    if: needs.scout.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [1, 2, 3]
+    env:
+      B: ${{ matrix.batch }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: digest
+          path: .run/run
+
+      - name: Brief (profile from secret, never uploaded)
+        env:
+          READER_PROFILE: ${{ secrets.READER_PROFILE }}
         run: |
+          set -euo pipefail
+          mkdir -p .run/private
+          printf '%s\n' "$READER_PROFILE" > .run/private/profile.txt
+          while IFS= read -r l; do [ -n "$l" ] && echo "::add-mask::$l"; done < .run/private/profile.txt
+          [ -s .run/private/profile.txt ] || { echo "::error::READER_PROFILE secret missing"; exit 1; }
           python3 -I - <<'EOF'
+          import os
+          b = os.environ["B"]
           tpl = open("scripts/analyst_prompt.md").read()
           prof = open(".run/private/profile.txt").read().strip()
-          for b in (1, 2, 3):
-              open(f".run/run/prompt_{b}.md", "w").write(
-                  tpl.replace("{BATCH}", f".run/run/digest_batch{b}.json").replace("{TAXONOMY}", "data/taxonomy.json")
-                     .replace("{OUT}", f".run/run/analysis_{b}.json").replace("{PROFILE}", prof))
+          open(f".run/run/prompt_{b}.md", "w").write(
+              tpl.replace("{BATCH}", f".run/run/digest_batch{b}.json").replace("{TAXONOMY}", "data/taxonomy.json")
+                 .replace("{OUT}", f".run/run/analysis_{b}.json").replace("{PROFILE}", prof))
           EOF
 
-      - name: Claude, analysis and editorial
-        if: steps.date.outputs.exists == 'false'
+      - name: Claude, batch ${{ matrix.batch }}
+        id: claude1
+        continue-on-error: true
+        timeout-minutes: 25
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: "Read the file scripts/ci_prompt.md and carry out exactly the task it describes. It is your full brief."
-          # no general shell: Claude can only run the validator; articles it reads cannot make it execute anything else
+          prompt: >-
+            Read the file .run/run/prompt_${{ matrix.batch }}.md and carry out exactly the task it describes: it is your full brief.
+            You work alone in this session: no subagents, no shell. Write the output with the Write tool (if it is long,
+            write it once at the end, as a single valid JSON array). Do not end your turn until
+            .run/run/analysis_${{ matrix.batch }}.json exists and contains one object for every story in the batch.
           claude_args: |
-            --max-turns 150
-            --allowedTools "Agent,Task,Read,Write,Edit,Glob,Grep,WebFetch,Bash(python3 -I scripts/assemble.py:*)"
+            --max-turns 120
+            --allowedTools "${{ env.CLAUDE_TOOLS_BATCH }}"
+            --disallowedTools "${{ env.CLAUDE_BLOCKED }}"
 
-      - name: Gate (deterministic checks)
-        if: steps.date.outputs.exists == 'false'
+      - name: Check batch (attempt 1)
+        id: v1
+        if: always()
+        env:
+          EXEC: ${{ steps.claude1.outputs.execution_file }}
+        run: |
+          f="${EXEC:-$RUNNER_TEMP/claude-execution-output.json}"
+          if [ -f "$f" ]; then
+            jq -c '(if type=="array" then . else [.] end) | map(select(.type=="result")) | last
+                   | {subtype, is_error, num_turns, duration_ms, total_cost_usd}' "$f" 2>/dev/null || true
+          fi
+          python3 -I - <<'EOF'
+          # Keeps only well-formed items for stories of this batch, rewrites the file clean, reports what is missing.
+          import json, os
+          b = os.environ["B"]; out = f".run/run/analysis_{b}.json"
+          ids = [s["id"] for s in json.load(open(f".run/run/digest_batch{b}.json"))]
+          items = []
+          if os.path.exists(out):
+              try:
+                  raw = json.load(open(out))
+                  items = raw if isinstance(raw, list) else raw.get("items", raw.get("stories", []))
+              except Exception as e:
+                  print(f"analysis_{b}.json is not valid JSON ({type(e).__name__})")
+          good = {}
+          for x in items if isinstance(items, list) else []:
+              if not isinstance(x, dict):
+                  continue
+              try:
+                  i = int(x.get("id"))
+              except (TypeError, ValueError):
+                  continue
+              if i in ids and isinstance(x.get("label"), str) and x.get("summary_it"):
+                  x["id"] = i
+                  good.setdefault(i, x)
+          missing = [i for i in ids if i not in good]
+          if good:
+              json.dump([good[i] for i in ids if i in good], open(out, "w"), ensure_ascii=False)
+          elif os.path.exists(out):
+              os.remove(out)
+          print(f"batch {b}: {len(good)}/{len(ids)} stories analysed")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as g:
+              g.write(f"complete={'true' if not missing else 'false'}\n")
+              g.write(f"missing={' '.join(map(str, missing))}\n")
+          EOF
+
+      - name: Pause before retry
+        if: steps.v1.outputs.complete != 'true'
+        run: sleep 60
+
+      - name: Claude, batch ${{ matrix.batch }} retry
+        id: claude2
+        if: steps.v1.outputs.complete != 'true'
+        continue-on-error: true
+        timeout-minutes: 25
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: >-
+            Read the file .run/run/prompt_${{ matrix.batch }}.md: it is your full brief.
+            A previous attempt left these story ids without analysis: ${{ steps.v1.outputs.missing }}.
+            Analyse only those stories. If .run/run/analysis_${{ matrix.batch }}.json already exists, Read it and write it back
+            with the old items unchanged plus the new ones, as one valid JSON array; otherwise create it with the new items.
+            You work alone: no subagents, no shell. Do not end your turn until the file contains an object for each of those ids.
+          claude_args: |
+            --max-turns 120
+            --allowedTools "${{ env.CLAUDE_TOOLS_BATCH }}"
+            --disallowedTools "${{ env.CLAUDE_BLOCKED }}"
+
+      - name: Check batch (retry)
+        id: v2
+        if: always() && steps.v1.outputs.complete != 'true'
+        env:
+          EXEC: ${{ steps.claude2.outputs.execution_file }}
+        run: |
+          f="${EXEC:-$RUNNER_TEMP/claude-execution-output.json}"
+          if [ -f "$f" ]; then
+            jq -c '(if type=="array" then . else [.] end) | map(select(.type=="result")) | last
+                   | {subtype, is_error, num_turns, duration_ms, total_cost_usd}' "$f" 2>/dev/null || true
+          fi
+          python3 -I - <<'EOF'
+          # Keeps only well-formed items for stories of this batch, rewrites the file clean, reports what is missing.
+          import json, os
+          b = os.environ["B"]; out = f".run/run/analysis_{b}.json"
+          ids = [s["id"] for s in json.load(open(f".run/run/digest_batch{b}.json"))]
+          items = []
+          if os.path.exists(out):
+              try:
+                  raw = json.load(open(out))
+                  items = raw if isinstance(raw, list) else raw.get("items", raw.get("stories", []))
+              except Exception as e:
+                  print(f"analysis_{b}.json is not valid JSON ({type(e).__name__})")
+          good = {}
+          for x in items if isinstance(items, list) else []:
+              if not isinstance(x, dict):
+                  continue
+              try:
+                  i = int(x.get("id"))
+              except (TypeError, ValueError):
+                  continue
+              if i in ids and isinstance(x.get("label"), str) and x.get("summary_it"):
+                  x["id"] = i
+                  good.setdefault(i, x)
+          missing = [i for i in ids if i not in good]
+          if good:
+              json.dump([good[i] for i in ids if i in good], open(out, "w"), ensure_ascii=False)
+          elif os.path.exists(out):
+              os.remove(out)
+          print(f"batch {b}: {len(good)}/{len(ids)} stories analysed")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as g:
+              g.write(f"complete={'true' if not missing else 'false'}\n")
+              g.write(f"missing={' '.join(map(str, missing))}\n")
+          EOF
+
+      # analyses are published on the site anyway; kept for one day only. A batch that produced nothing uploads nothing.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis-${{ matrix.batch }}
+          path: .run/run/analysis_${{ matrix.batch }}.json
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------- 3. editorial, gate, publish
+  publish:
+    needs: [scout, analyze]
+    if: always() && needs.scout.result == 'success' && needs.scout.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      D: ${{ needs.scout.outputs.date }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: digest
+          path: .run/run
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: analysis-*
+          path: .run/run
+          merge-multiple: true
+
+      - name: Private files (from secrets, never committed)
+        env:
+          DENY_TERMS: ${{ secrets.DENY_TERMS }}
         run: |
           set -euo pipefail
-          D="${{ steps.date.outputs.date }}"
+          mkdir -p .run/private
+          printf '%s\n' "$DENY_TERMS" | sed 's/\r$//' | sed '/^[[:space:]]*$/d' > .run/private/deny.txt
+          while IFS= read -r t; do echo "::add-mask::$t"; done < .run/private/deny.txt
+          [ -s .run/private/deny.txt ] || { echo "::error::DENY_TERMS secret missing"; exit 1; }
+          echo "$D" > .run/date.txt
+
+      - name: Sanitise analyses
+        run: |
+          python3 -I - <<'EOF'
+          # Deterministic clean-up so a single bad story never blocks the edition:
+          # unknown labels are replaced, stories containing a private term are dropped, coverage is checked.
+          import glob, json, re, sys
+          tax = {l["id"] for l in json.load(open("data/taxonomy.json"))["labels"]}
+          digest = {s["id"]: s for f in glob.glob(".run/run/digest_batch*.json") for s in json.load(open(f))}
+          terms = [t.strip() for t in open(".run/private/deny.txt") if t.strip()]
+          rx = [re.compile(r"\b" + re.escape(t) + r"\b", re.I) for t in terms]
+          kept = dropped = relabeled = 0
+          for f in sorted(glob.glob(".run/run/analysis_*.json")):
+              out = []
+              for x in json.load(open(f)):
+                  blob = json.dumps(x, ensure_ascii=False)
+                  if any(r.search(blob) for r in rx):
+                      dropped += 1; continue
+                  lab = x.get("label", "")
+                  if not lab.startswith("NEW:") and lab not in tax:
+                      d = digest.get(x["id"], {})
+                      x["label"] = next((c for c in (x.get("secondary_label"), d.get("rule_label")) if c in tax), "society_trends")
+                      relabeled += 1
+                  if x.get("secondary_label") not in tax:
+                      x["secondary_label"] = None
+                  out.append(x); kept += 1
+              json.dump(out, open(f, "w"), ensure_ascii=False)
+          total = len(digest)
+          print(f"analysed {kept}/{total} stories; dropped for private terms: {dropped}; relabeled: {relabeled}")
+          if total == 0 or kept < 0.6 * total:
+              print(f"::error::Only {kept}/{total} stories analysed: not enough for an edition"); sys.exit(1)
+          if kept < total:
+              print(f"::warning::Partial edition: {kept}/{total} stories")
+          EOF
+
+      - name: Claude, editorial
+        id: ed1
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "Read the file scripts/ci_prompt.md and carry out exactly the task it describes. It is your full brief. You work alone: no subagents, no shell."
+          claude_args: |
+            --max-turns 40
+            --allowedTools "${{ env.CLAUDE_TOOLS_EDITORIAL }}"
+            --disallowedTools "${{ env.CLAUDE_BLOCKED }}"
+
+      - name: Check editorial (attempt 1)
+        id: c1
+        if: always()
+        run: |
+          python3 -I - <<'EOF'
+          # Runs the real validator on the full issue and turns any problem into feedback for a retry.
+          import json, os, subprocess
+          D = os.environ["D"]; reasons = []
+          ed = None
+          try:
+              ed = json.load(open(".run/run/editorial.json"))
+              if not isinstance(ed, dict): reasons.append("editorial.json must be a JSON object"); ed = None
+          except FileNotFoundError:
+              reasons.append(".run/run/editorial.json was not written")
+          except Exception:
+              reasons.append(".run/run/editorial.json is not valid JSON")
+          if ed is not None:
+              if not str(ed.get("headline", "")).strip(): reasons.append("headline is empty")
+              elif len(ed["headline"]) > 110: reasons.append("headline longer than 90 characters")
+              if not str(ed.get("intro", "")).strip(): reasons.append("intro is empty")
+              r = subprocess.run(["python3", "-I", "scripts/assemble.py", "--run", ".run/run", "--taxonomy", "data/taxonomy.json",
+                                  "--date", D, "--editorial", ".run/run/editorial.json", "--deny-file", ".run/private/deny.txt"],
+                                 capture_output=True, text=True)
+              if r.returncode != 0:
+                  reasons.append("the validator crashed on editorial.json (check the schema)")
+              else:
+                  v = json.loads(r.stdout)["validation"]
+                  if v.get("deny_hit"): reasons.append("the editorial contains a private term from .run/private/deny.txt: remove it")
+                  if v.get("editorial_bad_ref"): reasons.append("some story_id in try_today or for_your_work is not a story of today's analyses")
+          ok = not reasons
+          print("editorial OK" if ok else "editorial rejected: " + "; ".join(reasons))
+          open(".run/editorial_feedback.txt", "w").write("; ".join(reasons))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as g:
+              g.write(f"ok={'true' if ok else 'false'}\n")
+          EOF
+
+      - name: Claude, editorial retry
+        if: steps.c1.outputs.ok != 'true'
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: >-
+            Read the file scripts/ci_prompt.md and carry out exactly the task it describes. It is your full brief.
+            A previous attempt was rejected for these reasons, listed in .run/editorial_feedback.txt: read that file and fix every point.
+            Overwrite .run/run/editorial.json. You work alone: no subagents, no shell.
+          claude_args: |
+            --max-turns 40
+            --allowedTools "${{ env.CLAUDE_TOOLS_EDITORIAL }}"
+            --disallowedTools "${{ env.CLAUDE_BLOCKED }}"
+
+      - name: Check editorial (retry)
+        id: c2
+        if: always() && steps.c1.outputs.ok != 'true'
+        run: |
+          python3 -I - <<'EOF'
+          # Runs the real validator on the full issue and turns any problem into feedback for a retry.
+          import json, os, subprocess
+          D = os.environ["D"]; reasons = []
+          ed = None
+          try:
+              ed = json.load(open(".run/run/editorial.json"))
+              if not isinstance(ed, dict): reasons.append("editorial.json must be a JSON object"); ed = None
+          except FileNotFoundError:
+              reasons.append(".run/run/editorial.json was not written")
+          except Exception:
+              reasons.append(".run/run/editorial.json is not valid JSON")
+          if ed is not None:
+              if not str(ed.get("headline", "")).strip(): reasons.append("headline is empty")
+              elif len(ed["headline"]) > 110: reasons.append("headline longer than 90 characters")
+              if not str(ed.get("intro", "")).strip(): reasons.append("intro is empty")
+              r = subprocess.run(["python3", "-I", "scripts/assemble.py", "--run", ".run/run", "--taxonomy", "data/taxonomy.json",
+                                  "--date", D, "--editorial", ".run/run/editorial.json", "--deny-file", ".run/private/deny.txt"],
+                                 capture_output=True, text=True)
+              if r.returncode != 0:
+                  reasons.append("the validator crashed on editorial.json (check the schema)")
+              else:
+                  v = json.loads(r.stdout)["validation"]
+                  if v.get("deny_hit"): reasons.append("the editorial contains a private term from .run/private/deny.txt: remove it")
+                  if v.get("editorial_bad_ref"): reasons.append("some story_id in try_today or for_your_work is not a story of today's analyses")
+          ok = not reasons
+          print("editorial OK" if ok else "editorial rejected: " + "; ".join(reasons))
+          open(".run/editorial_feedback.txt", "w").write("; ".join(reasons))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as g:
+              g.write(f"ok={'true' if ok else 'false'}\n")
+          EOF
+
+      - name: Fallback editorial
+        if: always() && steps.c1.outputs.ok != 'true' && steps.c2.outputs.ok != 'true'
+        run: |
+          # neutral editorial with no claims, so the stories still go out
+          echo "::warning::Editorial rejected twice, publishing with a neutral fallback editorial"
+          python3 -I - <<'EOF'
+          import json
+          json.dump({"headline": "Rassegna HN del giorno",
+                     "intro": "Oggi l'editoriale non è disponibile. Qui sotto trovi le storie più discusse delle ultime 24 ore su Hacker News, con le sintesi e i commenti più interessanti.",
+                     "try_today": [], "for_your_work": [], "watch": []},
+                    open(".run/run/editorial.json", "w"), ensure_ascii=False)
+          EOF
+
+      - name: Gate (deterministic checks)
+        run: |
+          set -euo pipefail
           python3 -I scripts/assemble.py --run .run/run --taxonomy data/taxonomy.json --date "$D" \
             --editorial .run/run/editorial.json --deny-file .run/private/deny.txt > .run/report.json
           python3 -I - <<'EOF'
           import json, sys
-          r = json.load(open(".run/report.json")); meta = json.load(open(".run/run/run_meta.json"))
-          ed = json.load(open(".run/run/editorial.json")); v = r["validation"]
+          r = json.load(open(".run/report.json")); v = r["validation"]
           print(json.dumps({k: r[k] for k in ("stories", "tools", "new_labels", "bytes", "fits_256KiB", "validation")}, ensure_ascii=False))
           problems = []
           if v.get("deny_hit"): problems.append("private term in output")
           if v.get("editorial_bad_ref"): problems.append("editorial points to missing stories")
           if v.get("bad_label"): problems.append("unknown labels")
           if not r["fits_256KiB"]: problems.append("issue too large")
-          if r["stories"] < meta["selected"]: problems.append(f"only {r['stories']}/{meta['selected']} stories analysed")
-          if not ed.get("headline") or not ed.get("intro"): problems.append("editorial incomplete")
+          if r["stories"] < 10: problems.append(f"only {r['stories']} stories")
           if problems:
               print("::error::Gate failed: " + "; ".join(problems)); sys.exit(1)
           EOF
 
       - name: Publish, commit, push
-        if: steps.date.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          D="${{ steps.date.outputs.date }}"
-          python3 -I scripts/publish.py --run .run/run --date "$D" --site . \
-            --base-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          BASE="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          git fetch -q origin main && git reset -q --hard FETCH_HEAD
+          if [ -f "data/issues/$D.json" ]; then echo "::notice::Edition $D was published meanwhile, nothing to do"; exit 0; fi
+          python3 -I scripts/publish.py --run .run/run --date "$D" --site . --base-url "$BASE"
           # last line of defence: -q so a match is never printed to the public log
           if grep -qriwF -f .run/private/deny.txt data feed.xml; then echo "::error::Private term found in site files, not publishing"; exit 1; fi
           git add data feed.xml
           git -c user.name="Rassegna HN" -c user.email="rassegna-hn@users.noreply.github.com" commit -q -m "Edizione $D"
-          for i in 1 2 3; do
-            git fetch -q origin main && git rebase -q FETCH_HEAD && git push -q origin HEAD:main && break
-            [ "$i" = 3 ] && exit 1; sleep 10
+          for i in 1 2 3 4; do
+            git push -q origin HEAD:main && break
+            [ "$i" = 4 ] && { echo "::error::Push failed four times"; exit 1; }
+            sleep $((i * 10)); git fetch -q origin main && git rebase -q FETCH_HEAD
           done
-          gh workflow run email.yml -f date="$D"
-          echo "::notice::Published https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/?d=$D"
+          for i in 1 2 3; do gh workflow run email.yml -f date="$D" && break; sleep 15; done
+          echo "::notice::Published $BASE/?d=$D"
 
+  # ---------------------------------------------------------------- 4. failure email
+  notify:
+    needs: [scout, analyze, publish]
+    if: always() && (needs.scout.result == 'failure' || needs.publish.result == 'failure' || needs.publish.result == 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
       - name: Report failure by email
-        if: failure()
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          D: ${{ needs.scout.outputs.date }}
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           FROM="${MAIL_FROM:-Rassegna HN <onboarding@resend.dev>}"
-          jq -n --arg from "$FROM" --arg to "$MAIL_TO" --arg url "$RUN_URL" --arg d "${{ steps.date.outputs.date }}" \
+          jq -n --arg from "$FROM" --arg to "$MAIL_TO" --arg url "$RUN_URL" --arg d "${D:-oggi}" \
             '{from:$from, to:[$to], subject:("Rassegna HN " + $d + ": generazione fallita"),
-              text:("La rassegna di oggi non è stata pubblicata. Dettagli del run: " + $url)}' |
+              text:("La rassegna non è stata pubblicata. Dettagli del run: " + $url)}' |
           curl -sS -X POST https://api.resend.com/emails -H "Authorization: Bearer $RESEND_API_KEY" \
                -H "Content-Type: application/json" --data @- || true
