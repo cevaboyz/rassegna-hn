@@ -23,10 +23,12 @@ site = a.site_url.rstrip("/")
 link_issue = f"{site}/?d={I['date']}" if site else ""
 e = html.escape
 
-# palette and fonts
-INK, MUTED, ACC, LINE, BG, SOFT, WARM = "#14201a", "#5d6b63", "#0d6b5c", "#dfe5dd", "#eef1ec", "#f6f8f5", "#e2672a"
-sans = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
-serif = "font-family:Georgia,'Times New Roman',serif"
+# palette and fonts: the portfolio's night theme (andreacastagna.info).
+# Web fonts load in Apple Mail and some clients; elsewhere the fallbacks keep the same mono/grotesk feel.
+INK, MUTED, ACC, LINE, BG, SOFT, WARM = "#e6fff6", "#8e9bbd", "#00ffa3", "#2e3470", "#060914", "#121a36", "#ff2e88"
+PANEL = "#0b1022"
+sans = "font-family:'IBM Plex Mono',Menlo,Consolas,'Courier New',monospace"
+serif = "font-family:'Space Grotesk','Helvetica Neue',Helvetica,Arial,sans-serif"
 
 LABEL_EMOJI = {
     "dev_tools": "🛠️", "ai_society": "🤖", "ai_models": "🧠", "ai_industry": "🏭", "startups_business": "🚀", "big_tech": "🏢",
@@ -59,29 +61,34 @@ def a_(url, text, color=ACC, bold=False):
 def button(url, text):
     if not url:
         return ""
-    return (f'<a href="{e(url)}" style="{sans};display:inline-block;font-size:13px;font-weight:600;color:{ACC};'
-            f'text-decoration:none;border:1px solid {ACC};border-radius:6px;padding:5px 10px;margin:6px 6px 0 0">{e(text)}</a>')
+    return (f'<a href="{e(url)}" style="{sans};display:inline-block;font-size:12px;font-weight:600;color:{ACC};'
+            f'text-decoration:none;border:1px solid {ACC};padding:5px 10px;margin:8px 6px 0 0">[ {e(text)} ]</a>')
 
 
 def chip(text):
-    return (f'<span style="{sans};display:inline-block;font-size:12px;color:{INK};background:{BG};border-radius:10px;'
-            f'padding:2px 8px;margin:0 6px 4px 0">{e(text)}</span>')
+    return (f'<span style="{sans};display:inline-block;font-size:11px;color:{INK};background:{SOFT};border:1px solid {LINE};'
+            f'padding:1px 7px;margin:0 6px 4px 0">{e(text)}</span>')
+
+
+SEC = [0]  # running number for the terminal-style "// 01" labels
 
 
 def section(emoji, title, inner):
-    return (f'<tr><td style="padding:0 0 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            f'style="background:#ffffff;border:1px solid {LINE};border-radius:10px"><tr><td style="padding:18px 18px 8px">'
-            f'<p style="{sans};font-size:17px;font-weight:700;color:{INK};margin:0 0 12px">{emoji}&nbsp; {e(title)}</p>'
+    SEC[0] += 1
+    return (f'<tr><td style="padding:0 0 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{PANEL}" '
+            f'style="background:{PANEL};border:1px solid {LINE}"><tr><td style="padding:18px 18px 8px">'
+            f'<p style="{sans};font-size:11px;letter-spacing:.06em;color:{WARM};margin:0 0 2px">// {SEC[0]:02d}</p>'
+            f'<p style="{serif};font-size:19px;font-weight:700;color:{INK};margin:0 0 14px">{emoji}&nbsp; {e(title)}</p>'
             f'{inner}</td></tr></table></td></tr>')
 
 
 def item(inner, last=False):
-    border = "" if last else f"border-bottom:1px solid {LINE};"
+    border = "" if last else f"border-bottom:1px dashed {LINE};"
     return f'<div style="{border}padding:0 0 12px;margin:0 0 12px">{inner}</div>'
 
 
 def p(text, size=15, color=INK, extra=""):
-    return f'<p style="{sans};font-size:{size}px;line-height:1.5;color:{color};margin:0 0 4px;{extra}">{text}</p>'
+    return f'<p style="{sans};font-size:{size - 1}px;line-height:1.6;color:{color};margin:0 0 4px;{extra}">{text}</p>'
 
 
 tool_url = {}
@@ -94,8 +101,9 @@ date_it = "/".join(reversed(I["date"].split("-")))
 
 # ---- header
 header = (f'<tr><td style="padding:4px 4px 16px">'
-          f'<p style="{sans};font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:{MUTED};margin:0">📰 Rassegna HN · {e(date_it)}</p>'
-          f'<h1 style="{serif};font-size:26px;line-height:1.25;color:{INK};margin:6px 0 12px">{e(E.get("headline") or "Rassegna del giorno")}</h1>')
+          f'<p style="{sans};font-size:12px;letter-spacing:.04em;color:{MUTED};margin:0">// rassegna_hn.log · {e(date_it)}</p>'
+          f'<p style="{serif};font-size:30px;font-weight:700;letter-spacing:-.02em;color:{INK};margin:4px 0 0">Rassegna <span style="color:{ACC}">HN</span><span style="color:{WARM}">_</span></p>'
+          f'<h1 style="{serif};font-size:24px;line-height:1.25;font-weight:700;color:{INK};margin:14px 0 12px">{e(E.get("headline") or "Rassegna del giorno")}</h1>')
 if E.get("intro"):
     header += p(e(E["intro"]), 16, INK, "line-height:1.6")
 n_comm = sum(1 for s in stories if s.get("summary_source") == "commenti")
@@ -114,7 +122,7 @@ if tt:
     for k, t in enumerate(tt):
         s = by_id.get(t.get("story_id"), {})
         url = tool_url.get((t.get("name") or "").lower())
-        inner = (p(f'<b>{e(t.get("name", ""))}</b>', 16) + p(e(short(t.get("why"), 320)), 14, INK)
+        inner = (p(f'<b>{e(t.get("name", ""))}</b>', 17, INK, serif) + p(e(short(t.get("why"), 320)), 14, INK)
                  + button(url, "Apri ↗") + button(s.get("hn_url"), "💬 Discussione"))
         rows.append(item(inner, k == len(tt) - 1))
         txt += [f"• {t.get('name', '')}", f"  {short(t.get('why'), 320)}"] + ([f"  {url}"] if url else []) + [f"  {s.get('hn_url', '')}", ""]
@@ -127,7 +135,7 @@ if fw:
     txt += ["💼 PER IL TUO LAVORO", ""]
     for k, f in enumerate(fw):
         s = by_id.get(f.get("story_id"), {})
-        inner = p(a_(s.get("url") or s.get("hn_url"), s.get("title", ""), INK, True), 15) + p(e(short(f.get("note"), 320)), 14, MUTED)
+        inner = p(a_(s.get("url") or s.get("hn_url"), s.get("title", ""), INK, True), 16, INK, serif) + p(e(short(f.get("note"), 320)), 14, MUTED)
         rows.append(item(inner, k == len(fw) - 1))
         txt += [f"• {s.get('title', '')}", f"  {short(f.get('note'), 320)}", ""]
     sections.append(section("💼", "Per il tuo lavoro", "".join(rows)))
@@ -147,7 +155,7 @@ if top:
         summary = short(re.sub(r"^Ricostruita dai commenti:\s*", "", s.get("summary") or ""), 280)
         summary = summary[:1].upper() + summary[1:]
         inner = (chip(f'{emo} {s.get("label_name", "")}') + badge
-                 + p(a_(s.get("url") or s.get("hn_url"), s.get("title", ""), INK, True), 16, INK, "margin-top:4px")
+                 + p(a_(s.get("url") or s.get("hn_url"), s.get("title", ""), INK, True), 17, INK, serif + ";margin-top:4px")
                  + p(e(meta), 12, MUTED)
                  + (p(e(summary), 14, INK, "margin-top:6px") if summary else "")
                  + p(a_(s.get("hn_url"), "Leggi la discussione →"), 13, ACC, "margin-top:4px"))
@@ -180,7 +188,7 @@ if cod:
     txt += ["💬 COMMENTI DEL GIORNO", ""]
     for c in cod:
         rows.append(f'<div style="{sans};font-size:14px;line-height:1.55;color:{INK};margin:0 0 12px;padding:10px 14px;'
-                    f'border-left:3px solid {WARM};background:{SOFT};border-radius:0 8px 8px 0">“{e(c.get("quote", ""))}”'
+                    f'border-left:2px solid {WARM};background:{SOFT}">“{e(c.get("quote", ""))}”'
                     f'<br><span style="font-size:12px;color:{MUTED}">— {a_(c.get("hn_url"), c.get("author", ""), MUTED)} su {e(c.get("story_title", ""))}</span></div>')
         txt += [f'“{c.get("quote", "")}”', f"  — {c.get('author', '')}, {c.get('hn_url', '')}", ""]
     sections.append(section("💬", "Commenti del giorno", "".join(rows)))
@@ -205,11 +213,13 @@ txt += ["✅ Controlli: " + checks] + ([f"📖 Edizione completa: {link_issue}"]
 
 preheader = short(E.get("intro") or E.get("headline") or "", 140)
 body = (f'<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'<meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">'
+        f'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@500;700&display=swap">'
         f'<title>{e(E.get("headline") or "Rassegna HN")}</title></head>'
-        f'<body style="margin:0;padding:0;background:{BG}">'
+        f'<body bgcolor="{BG}" style="margin:0;padding:0;background:{BG}">'
         # hidden preheader: the preview line shown next to the subject in most inboxes
         f'<div style="display:none;max-height:0;overflow:hidden;opacity:0">{e(preheader)}</div>'
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{BG}"><tr><td align="center" style="padding:20px 10px">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{BG}" style="background:{BG}"><tr><td align="center" style="padding:20px 10px">'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px">'
         + header + "".join(sections) + footer
         + "</table></td></tr></table></body></html>")
