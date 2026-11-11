@@ -635,6 +635,28 @@
    "examples": [
     "H.264 Is Magic (2016)"
    ]
+  },
+  {
+   "id": "smart_home_iot",
+   "name": "Smart home e IoT",
+   "description": "Domotica, dispositivi connessi, protocolli locali e dipendenza dal cloud",
+   "patterns": [],
+   "domains": [],
+   "origin": "daily-2026-11-11",
+   "examples": [
+    "Smart home devices should work without the internet"
+   ]
+  },
+  {
+   "id": "telecom_connectivity",
+   "name": "Connettività e telecomunicazioni",
+   "description": "Satelliti, reti, operatori e accesso a internet",
+   "patterns": [],
+   "domains": [],
+   "origin": "daily-2026-11-11",
+   "examples": [
+    "Starlink Mini 2"
+   ]
   }
  ]
 }
