@@ -657,6 +657,17 @@
    "examples": [
     "Starlink Mini 2"
    ]
+  },
+  {
+   "id": "preparazione_emergenze",
+   "name": "Preparazione ed emergenze",
+   "description": "Manuali offline, sopravvivenza, resilienza e ricostruzione dopo crisi",
+   "patterns": [],
+   "domains": [],
+   "origin": "daily-2026-11-20",
+   "examples": [
+    "Everything you need to survive and rebuild society"
+   ]
   }
  ]
 }
